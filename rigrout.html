@@ -1,0 +1,2903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RigRout — Commercial Route Intelligence</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.markercluster/1.5.3/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.markercluster/1.5.3/MarkerCluster.Default.css"/>
+<style>
+:root {
+  --pine:      #1A3C34;
+  --pine-lt:   #2A5548;
+  --amber:     #F5A623;
+  --blue:      #2C7DA0;
+  --blue-lt:   #3D9EC5;
+  --bg:        #0E1A17;
+  --surf:      #162420;
+  --surf2:     #1F3530;
+  --text:      #E4ECF0;
+  --dim:       #7A9BA8;
+  --border:    #253D38;
+  --red:       #E05252;
+  --green:     #3DB87A;
+  --yellow:    #F5A623;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text)}
+
+/* ── Layout ── */
+#app{display:flex;flex-direction:column;height:100vh}
+#header{height:46px;background:var(--pine);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0;z-index:900}
+#body{display:flex;flex:1;overflow:hidden}
+
+/* ── Header ── */
+.logo{font-size:17px;font-weight:800;letter-spacing:-.5px}
+.logo em{color:var(--amber);font-style:normal}
+.logo-sub{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
+.hspace{flex:1}
+.badge{font-size:10px;color:var(--dim);background:var(--surf2);border:1px solid var(--border);padding:2px 8px;border-radius:4px}
+.hbtn{background:var(--surf2);border:1px solid var(--border);color:var(--text);font-size:11px;padding:4px 10px;border-radius:4px;cursor:pointer}
+.hbtn:hover{background:var(--pine-lt)}
+
+/* ── Sidebar ── */
+#sidebar{width:288px;background:var(--surf);border-right:1px solid var(--border);overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+#sidebar::-webkit-scrollbar{width:3px}
+#sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+.sec{padding:10px 14px;border-bottom:1px solid var(--border)}
+.sec-title{font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.9px;margin-bottom:10px}
+
+/* ── Inputs ── */
+.field{margin-bottom:8px}
+.field label{display:block;font-size:10px;color:var(--dim);margin-bottom:3px}
+input[type=text],input[type=number],select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:5px;font-size:13px;outline:none;transition:border .15s}
+input:focus,select:focus{border-color:var(--blue)}
+select option{background:var(--bg)}
+.route-wrap{position:relative}
+.route-wrap input{padding-left:28px}
+.rdot{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%}
+.origin-dot{background:var(--green)}
+.dest-dot{background:var(--red)}
+.sugg{display:none;position:absolute;z-index:999;left:0;right:0;background:var(--bg);border:1px solid var(--border);border-top:none;border-radius:0 0 5px 5px;max-height:140px;overflow-y:auto}
+.sugg-item{padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)}
+.sugg-item:last-child{border-bottom:none}
+.sugg-item:hover{background:var(--surf2)}
+
+/* ── Buttons ── */
+.btn{width:100%;padding:9px;border:none;border-radius:5px;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:var(--blue-lt)}
+.btn-primary:disabled{background:var(--surf2);color:var(--dim);cursor:not-allowed}
+.btn-ghost{background:transparent;color:var(--dim);border:1px solid var(--border);margin-top:5px}
+.btn-ghost:hover{background:var(--surf2);color:var(--text)}
+
+/* ── Profile grid ── */
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.pgrid .field label{font-size:10px}
+.pgrid .field input{padding:5px 7px;font-size:12px}
+.pgrid .full{grid-column:1/-1}
+
+/* ── Toggle ── */
+.trow{display:flex;align-items:center;justify-content:space-between;margin-top:9px}
+.tlabel{font-size:12px}
+.toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:4px;overflow:hidden}
+.toggle button{padding:4px 10px;font-size:11px;background:transparent;color:var(--dim);border:none;cursor:pointer;transition:all .15s}
+.toggle button.on{background:var(--blue);color:#fff;box-shadow:0 1px 4px rgba(44,125,160,.35)}
+.toggle button:hover:not(.on){background:var(--surf2);color:var(--text)}
+
+/* ── Checkboxes ── */
+.checks{display:flex;flex-direction:column;gap:6px}
+.chk{display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;color:var(--text)}
+.chk input{width:13px;height:13px;cursor:pointer;accent-color:var(--blue)}
+
+/* ── Map ── */
+#map-wrap{flex:1;position:relative}
+#map{width:100%;height:100%}
+
+/* ── Status bar ── */
+#statusbar{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);background:rgba(14,26,23,.92);backdrop-filter:blur(8px);border:1px solid var(--border);color:var(--dim);font-size:13px;padding:6px 16px;border-radius:20px;white-space:nowrap;z-index:800;pointer-events:none;transition:opacity .3s}
+
+/* ── Panel ── */
+#panel{width:296px;background:var(--surf);border-left:1px solid var(--border);display:none;flex-direction:column;overflow:hidden;flex-shrink:0}
+#panel.open{display:flex}
+.ph{padding:10px 14px;background:var(--pine);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.ph-title{font-size:12px;font-weight:700;letter-spacing:.2px}
+.ph-x{background:none;border:none;color:var(--dim);cursor:pointer;font-size:18px;line-height:1;padding:0 4px}
+.ph-x:hover{color:var(--text)}
+.panel-body{flex:1;overflow-y:auto}
+.panel-body::-webkit-scrollbar{width:3px}
+.panel-body::-webkit-scrollbar-thumb{background:var(--border)}
+
+/* ── Stats ── */
+.stats{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--border)}
+.stat{padding:11px 10px;border-right:1px solid var(--border)}
+.stat:last-child{border-right:none}
+.sv{font-size:16px;font-weight:800;color:var(--blue)}
+.sl{font-size:9px;color:var(--dim);text-transform:uppercase;margin-top:1px}
+
+/* ── Risk audit ── */
+.risks{padding:10px 12px 4px}
+.risk-sec-title{font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.risk{padding:9px 10px;border-radius:5px;border-left:3px solid;margin-bottom:7px}
+.risk.warn{background:rgba(245,166,35,.08);border-color:var(--amber)}
+.risk.danger{background:rgba(224,82,82,.08);border-color:var(--red)}
+.risk.info{background:rgba(44,125,160,.08);border-color:var(--blue)}
+.risk.ok{background:rgba(61,184,122,.08);border-color:var(--green)}
+.risk-msg{font-size:12px;color:var(--text);line-height:1.45}
+.risk-src{font-size:9px;color:var(--dim);margin-top:4px}
+
+/* ── Stops ── */
+.stop-header-row{padding:9px 14px 5px;border-top:1px solid var(--border)}
+.stop-htitle{font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
+.stop{padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+.stop:hover{background:var(--surf2)}
+.stop-top{display:flex;justify-content:space-between;align-items:baseline}
+.stop-name{font-size:13px;font-weight:600}
+.stop-mi{font-size:10px;color:var(--dim)}
+.stop-amen{font-size:10px;color:var(--dim);margin-top:2px;line-height:1.4}
+.park{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-top:4px;text-transform:uppercase;letter-spacing:.4px}
+.park-hi{background:rgba(61,184,122,.15);color:#6DDBA5}
+.park-md{background:rgba(245,166,35,.15);color:#F5A623}
+.park-lo{background:rgba(224,82,82,.15);color:#F08080}
+
+/* ── Filter tabs ── */
+.poi-filters{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.ftag{font-size:16px;padding:4px 9px;border-radius:3px;border:1px solid var(--border);cursor:pointer;background:var(--bg);color:var(--dim);transition:all .15s}
+.ftag.on{background:var(--blue);border-color:var(--blue);color:#fff}
+
+/* ── Loading ── */
+.spin{display:none;text-align:center;padding:18px;color:var(--dim);font-size:12px}
+.spin.on{display:block}
+
+/* ── Note ── */
+.note{font-size:10px;color:var(--dim);line-height:1.5;padding:10px 14px;border-top:1px solid var(--border);background:rgba(245,166,35,.03)}
+.note strong{color:var(--amber)}
+
+/* ── Road Bans ── */
+.ban-feed-row{display:flex;align-items:center;justify-content:space-between;padding:3px 0}
+.ban-src-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 6px}
+.ban-src-row{display:flex;align-items:center;gap:5px;padding:2px 0;font-size:11px}
+.ban-src-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ban-src-name{color:var(--dim);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ban-src-count{font-size:10px;font-weight:700;min-width:28px;text-align:right}
+.ban-src-count.active{color:var(--red)}
+.ban-src-count.ok{color:var(--green)}
+.ban-src-count.loading{color:var(--dim)}
+.ban-src-count.err{color:var(--dim);font-size:9px}
+.ban-feed-name{font-size:10px;color:var(--dim)}
+.ban-status{font-size:9px;padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:.2px}
+.ban-status.live{background:rgba(61,184,122,.15);color:#6DDBA5}
+.ban-status.err{background:rgba(224,82,82,.12);color:#F08080}
+.ban-status.loading{background:rgba(44,125,160,.1);color:#7BB8D4;animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+.ban-count-badge{font-size:9px;background:rgba(224,82,82,.18);color:#F08080;border-radius:10px;padding:1px 8px;font-weight:700}
+.ban-sec-title{font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.9px;display:flex;align-items:center;gap:7px;margin-bottom:8px}
+
+/* ── Modals (Disclaimer & Feedback) ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);backdrop-filter:blur(6px);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal-overlay.hidden{display:none}
+.modal-box{background:var(--surf);border:1px solid var(--border);border-radius:10px;max-width:520px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.modal-head{padding:18px 20px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.modal-logo{font-size:20px;font-weight:800;letter-spacing:-.5px;margin-bottom:2px}
+.modal-logo em{color:var(--amber);font-style:normal}
+.modal-subtitle{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
+.modal-body{padding:18px 20px;overflow-y:auto;flex:1}
+.modal-body::-webkit-scrollbar{width:3px}
+.modal-body::-webkit-scrollbar-thumb{background:var(--border)}
+.modal-body h3{font-size:12px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 6px}
+.modal-body h3:first-child{margin-top:0}
+.modal-body p{font-size:12px;color:var(--text);line-height:1.6;margin-bottom:8px}
+.modal-body ul{padding-left:16px;margin-bottom:8px}
+.modal-body ul li{font-size:12px;color:var(--text);line-height:1.6;margin-bottom:3px}
+.modal-foot{padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0}
+.disc-check-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;cursor:pointer}
+.disc-check-row input[type=checkbox]{width:15px;height:15px;flex-shrink:0;margin-top:2px;accent-color:var(--blue);cursor:pointer}
+.disc-check-row span{font-size:12px;color:var(--text);line-height:1.5}
+.btn-enter{width:100%;padding:11px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;letter-spacing:.2px}
+.btn-enter:hover:not(:disabled){background:var(--blue-lt)}
+.btn-enter:disabled{background:var(--surf2);color:var(--dim);cursor:not-allowed}
+
+/* Feedback modal specifics */
+.modal-box.fb-box{max-width:420px}
+.fb-close{background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;padding:0 4px;line-height:1;margin-left:auto;display:block}
+.fb-close:hover{color:var(--text)}
+.fb-head-row{display:flex;align-items:center}
+.fb-field{margin-bottom:12px}
+.fb-field label{display:block;font-size:10px;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.6px}
+.fb-field select,.fb-field input,.fb-field textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:5px;font-size:12px;outline:none;transition:border .15s;font-family:inherit}
+.fb-field select:focus,.fb-field input:focus,.fb-field textarea:focus{border-color:var(--blue)}
+.fb-field textarea{resize:vertical;min-height:90px;line-height:1.5}
+.fb-thanks{text-align:center;padding:24px 0;display:none}
+.fb-thanks .fb-tick{font-size:36px;margin-bottom:10px}
+.fb-thanks p{font-size:13px;color:var(--text)}
+.fb-thanks small{font-size:11px;color:var(--dim)}
+
+/* Feedback button in header */
+.hbtn-fb{background:var(--surf2);border:1px solid var(--border);color:var(--dim);font-size:11px;padding:4px 10px;border-radius:4px;cursor:pointer;transition:all .15s}
+.hbtn-fb:hover{background:var(--pine-lt);color:var(--text)}
+
+/* ── GPS / Location ── */
+#gps-btn{position:absolute;bottom:60px;right:14px;z-index:800;width:36px;height:36px;background:var(--surf);border:1px solid var(--border);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .15s;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+#gps-btn:hover{background:var(--pine-lt)}
+#gps-btn.active{background:var(--blue);border-color:var(--blue)}
+.gps-dot-outer{width:18px;height:18px;border-radius:50%;background:rgba(44,125,160,.25);animation:gps-pulse 2s ease-out infinite;position:absolute}
+.gps-dot-inner{width:10px;height:10px;border-radius:50%;background:#2C7DA0;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);position:relative;z-index:2}
+@keyframes gps-pulse{0%{transform:scale(1);opacity:.8}100%{transform:scale(2.6);opacity:0}}
+
+/* ── Weather ── */
+.wx-strip{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.wx-chip{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:10px;min-width:60px}
+.wx-chip .wx-icon{font-size:16px;display:block;text-align:center}
+.wx-chip .wx-temp{font-weight:700;color:var(--text);font-size:11px}
+.wx-chip .wx-label{color:var(--dim);font-size:9px}
+.wx-chip.wx-warn{border-color:var(--amber);background:rgba(245,166,35,.06)}
+.wx-chip.wx-danger{border-color:var(--red);background:rgba(224,82,82,.06)}
+
+
+/* ── Share panel ── */
+.share-url-box{display:flex;gap:6px;margin-top:8px}
+.share-url-box input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--dim);padding:6px 9px;border-radius:4px;font-size:10px;outline:none;cursor:text}
+.share-copy-btn{background:var(--blue);border:none;color:#fff;padding:6px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.share-copy-btn:hover{background:var(--blue-lt)}
+.share-copy-btn.copied{background:var(--green)}
+
+/* ── Weather panel section ── */
+.wx-sec{border-top:1px solid var(--border);padding:10px 14px}
+.wx-sec-title{font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.wx-route-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)}
+.wx-route-row:last-child{border-bottom:none}
+.wx-route-icon{font-size:18px;width:24px;text-align:center;flex-shrink:0}
+.wx-route-info{flex:1}
+.wx-route-label{font-size:10px;color:var(--dim)}
+.wx-route-desc{font-size:12px;font-weight:600;color:var(--text)}
+.wx-route-detail{font-size:10px;color:var(--dim);margin-top:1px}
+.wx-alert{background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:4px;padding:6px 9px;font-size:11px;color:var(--amber);margin-top:6px;line-height:1.45}
+/* ── Incident reporting ── */
+.inc-btn{width:100%;padding:7px;background:rgba(224,82,82,.12);border:1px solid rgba(224,82,82,.3);color:#F08080;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;margin-top:6px;transition:all .15s}
+.inc-btn:hover{background:rgba(224,82,82,.22);color:var(--text)}
+
+/* ── Floating Layers Panel ── */
+#layers-btn{position:absolute;top:10px;right:10px;z-index:850;background:var(--surf);border:1px solid var(--border);color:var(--text);padding:6px 13px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;align-items:center;gap:5px;transition:all .15s}
+#layers-btn:hover{background:var(--pine-lt)}
+#layers-btn.open{background:var(--blue);border-color:var(--blue)}
+#layers-panel{position:absolute;top:44px;right:10px;z-index:840;width:240px;background:var(--surf);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.6);overflow-y:auto;max-height:calc(100vh - 120px);transition:all .2s}
+#layers-panel.hidden{display:none}
+.lp-head{padding:10px 12px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.lp-head-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text)}
+.lp-clear{background:none;border:none;color:var(--blue);font-size:10px;cursor:pointer;padding:0;font-weight:600}
+.lp-clear:hover{color:var(--blue-lt)}
+.lp-sec{padding:8px 12px;border-bottom:1px solid var(--border)}
+.lp-sec:last-child{border-bottom:none}
+.lp-sec-title{font-size:10px;font-weight:800;color:var(--dim);text-transform:uppercase;letter-spacing:.9px;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between}
+.lp-row{display:flex;align-items:center;gap:7px;padding:4px 0;cursor:pointer;font-size:12px;color:var(--text);user-select:none}
+.lp-row:hover{color:#fff}
+.lp-row input[type=checkbox]{width:13px;height:13px;accent-color:var(--blue);cursor:pointer;flex-shrink:0}
+.lp-icon{font-size:14px;width:18px;text-align:center;flex-shrink:0}
+.lp-sub{display:flex;gap:8px;padding:4px 0 4px 20px;flex-wrap:wrap}
+.lp-sub-item{display:flex;align-items:center;gap:3px;font-size:10px;color:var(--dim)}
+.lp-sub-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+/* Road Conditions legend */
+.cond-legend{display:flex;gap:0;margin:5px 0 2px;border-radius:4px;overflow:hidden;height:8px}
+.cond-seg{flex:1;height:8px}
+.cond-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--dim);margin-top:2px}
+
+/* ── Map Bottom Bar (Map/Satellite/Trucker Mode) ── */
+#map-bottom-bar{position:absolute;bottom:0;left:50%;transform:translateX(-50%);z-index:820;display:flex;gap:0;background:var(--surf);border:1px solid var(--border);border-bottom:none;border-radius:10px 10px 0 0;overflow:hidden;box-shadow:0 -2px 12px rgba(0,0,0,.45)}
+.bbar-btn{padding:9px 18px;font-size:13px;font-weight:600;background:transparent;color:var(--dim);border:none;cursor:pointer;transition:all .15s;white-space:nowrap}
+.bbar-btn:hover{background:var(--surf2);color:var(--text)}
+.bbar-btn.active{background:var(--pine-lt);color:#fff}
+.bbar-truck{color:var(--amber);border-left:1px solid var(--border)}
+.bbar-truck.active{background:rgba(245,166,35,.15);color:var(--amber)}
+#trucker-mode-badge{display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:821;background:var(--amber);color:#000;font-size:10px;font-weight:800;padding:2px 10px;border-radius:10px;white-space:nowrap;pointer-events:none;letter-spacing:.3px}
+
+/* ── HazMat active badge ── */
+#hazmat-badge{display:none;background:rgba(245,166,35,.2);border:1px solid var(--amber);color:var(--amber);font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;letter-spacing:.4px;cursor:pointer}
+#hazmat-badge:hover{background:rgba(245,166,35,.3)}
+
+/* ── Road Condition polylines use Leaflet default ── */
+/* ── Mobile layout ── */
+@media (max-width: 640px) {
+  #sidebar{width:100%;height:auto;max-height:45vh;position:absolute;bottom:0;left:0;right:0;z-index:700;border-right:none;border-top:1px solid var(--border);flex-shrink:0;display:none}
+  #sidebar.mobile-open{display:flex}
+  #body{flex-direction:column}
+  #panel{width:100%;max-height:50vh;border-left:none;border-top:1px solid var(--border)}
+  #map-wrap{flex:1;min-height:0}
+  #mobile-toggle{display:flex}
+  #layers-panel{right:6px;width:220px}
+}
+#mobile-toggle{display:none;position:absolute;top:10px;left:10px;z-index:900;background:var(--surf);border:1px solid var(--border);padding:7px 11px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.4);align-items:center;gap:5px}
+
+/* ── Via Stops (multi-stop route planning) ── */
+.via-stop-row{display:flex;gap:4px;align-items:center;margin-bottom:6px}
+.via-remove-btn{background:none;border:none;color:var(--dim);cursor:pointer;font-size:15px;padding:2px 6px;line-height:1;flex-shrink:0;border-radius:3px;transition:all .15s}
+.via-remove-btn:hover{color:var(--red);background:rgba(224,82,82,.12)}
+#add-via-btn{background:none;border:1px dashed var(--border);color:var(--dim);border-radius:4px;padding:5px;font-size:11px;cursor:pointer;width:100%;margin-bottom:8px;transition:all .15s}
+#add-via-btn:hover{border-color:var(--blue);color:var(--blue);background:rgba(44,125,160,.05)}
+
+/* ── Risk count badge on header button ── */
+.risk-cnt{display:inline-flex;align-items:center;justify-content:center;background:var(--red);color:#fff;font-size:8px;font-weight:800;min-width:14px;height:14px;padding:0 2px;border-radius:7px;margin-left:4px;vertical-align:middle;line-height:1}
+
+/* ── Layer panel — bigger touch targets ── */
+.lp-row{min-height:32px}
+
+/* ── Mobile improvements ── */
+@keyframes slideUpSidebar{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+@media (max-width:640px){
+  #sidebar.mobile-open{animation:slideUpSidebar .22s ease}
+  #header .logo-sub{display:none}
+  #header .badge{display:none}
+  #share-hbtn{display:none}
+  #panel{max-height:55vh}
+  #map-bottom-bar .bbar-btn{padding:9px 12px;font-size:12px}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Disclaimer Modal ── -->
+<div class="modal-overlay" id="disclaimer-overlay">
+  <div class="modal-box" style="max-height:92vh;display:flex;flex-direction:column">
+    <div class="modal-head" style="flex-shrink:0">
+      <div class="modal-logo">Rig<em>Rout</em></div>
+      <div class="modal-subtitle">Commercial Route Intelligence — Terms of Use</div>
+    </div>
+    <!-- Accept bar always visible at top — no scrolling required -->
+    <div style="padding:12px 20px;background:rgba(44,125,160,.12);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:10px">
+      <button class="btn-enter" onclick="acceptDisclaimer()" style="width:auto;padding:9px 22px;flex-shrink:0">Enter RigRout →</button>
+      <span style="font-size:11px;color:var(--dim);line-height:1.4">By entering you confirm this tool is for informational use only and you remain responsible for all route compliance and safe operation.</span>
+    </div>
+    <div class="modal-body" style="overflow-y:auto;flex:1">
+      <h3>Informational Use Only</h3>
+      <p>RigRout is a routing assistance tool intended to support — not replace — the professional judgment of commercial vehicle operators. All route data, road ban feeds, and stop information are for informational purposes only.</p>
+      <h3>No Guarantee of Accuracy</h3>
+      <p>Road conditions, bridge clearances, weight restrictions, and seasonal bans may be incomplete, delayed, or inaccurate. Data comes from OSRM, OpenStreetMap, and provincial/state 511 feeds which may not reflect current ground conditions.</p>
+      <h3>Driver &amp; Operator Responsibility</h3>
+      <ul>
+        <li>You are solely responsible for complying with all posted signs, weight limits, bridge clearances, permit requirements, and applicable laws.</li>
+        <li>Always verify restrictions with the relevant DOT or provincial authority before dispatch.</li>
+        <li>Routing suggestions do not constitute legal, regulatory, or safety advice.</li>
+      </ul>
+      <h3>Limitation of Liability</h3>
+      <p>RigRout and its developers accept no liability for accidents, fines, permit violations, cargo damage, delays, or any losses arising from use of this application. Use at your own risk.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Feedback Modal ── -->
+<div class="modal-overlay hidden" id="feedback-overlay">
+  <div class="modal-box fb-box">
+    <div class="modal-head">
+      <div class="fb-head-row">
+        <div>
+          <div class="modal-logo" style="font-size:16px">Rig<em>Rout</em> Feedback</div>
+          <div class="modal-subtitle">Help us improve</div>
+        </div>
+        <button class="fb-close" onclick="closeFeedback()">×</button>
+      </div>
+    </div>
+    <div class="modal-body" id="fb-form-body">
+      <div class="fb-field">
+        <label>Category</label>
+        <select id="fb-cat">
+          <option value="bug">🐛 Bug Report</option>
+          <option value="feature">💡 Feature Request</option>
+          <option value="data">🗺️ Map / Data Issue</option>
+          <option value="ban">🚫 Road Ban Feed Issue</option>
+          <option value="safety">⚠️ Safety Concern</option>
+          <option value="general">💬 General Feedback</option>
+        </select>
+      </div>
+      <div class="fb-field">
+        <label>Your Feedback</label>
+        <textarea id="fb-msg" placeholder="Describe the issue or suggestion in as much detail as possible…"></textarea>
+      </div>
+      <div class="fb-field">
+        <label>Email (optional — for follow-up)</label>
+        <input type="email" id="fb-email" placeholder="your@email.com">
+      </div>
+    </div>
+    <div class="fb-thanks" id="fb-thanks">
+      <div class="fb-tick">✅</div>
+      <p>Feedback received. Thank you!</p>
+      <small>Your input helps make RigRout better for every driver on the road.</small>
+    </div>
+    <div class="modal-foot" id="fb-foot">
+      <button class="btn-enter" onclick="submitFeedback()">Send Feedback</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── Incident Report Modal ── -->
+<div class="modal-overlay hidden" id="incident-overlay">
+  <div class="modal-box fb-box">
+    <div class="modal-head">
+      <div class="fb-head-row">
+        <div>
+          <div class="modal-logo" style="font-size:16px">🚨 Report a Hazard</div>
+          <div class="modal-subtitle">Help fellow drivers on this corridor</div>
+        </div>
+        <button class="fb-close" onclick="closeIncident()">×</button>
+      </div>
+    </div>
+    <div class="modal-body" id="inc-form-body">
+      <div class="fb-field">
+        <label>Hazard Type</label>
+        <select id="inc-type">
+          <option value="crash">🚗 Crash / Accident</option>
+          <option value="debris">🪨 Road Debris</option>
+          <option value="construction">🚧 Construction / Lane Closure</option>
+          <option value="weather">🌨️ Severe Weather Conditions</option>
+          <option value="parking">🅿️ Truck Parking Full</option>
+          <option value="bridge">🌉 Bridge / Height Clearance Issue</option>
+          <option value="weigh">⚖️ Weigh Station Open — Expect Delays</option>
+          <option value="police">👮 Police Activity / Scale Check</option>
+          <option value="other">⚠️ Other Hazard</option>
+        </select>
+      </div>
+      <div class="fb-field">
+        <label>Location Description</label>
+        <input type="text" id="inc-location" placeholder="e.g. I-90 MM 142 westbound, near Billings MT">
+      </div>
+      <div class="fb-field">
+        <label>Details (optional)</label>
+        <textarea id="inc-desc" placeholder="Any extra details that help other drivers…" style="min-height:70px"></textarea>
+      </div>
+      <div style="font-size:10px;color:var(--dim);line-height:1.5">
+        📍 Incident markers auto-expire after 4 hours.
+      </div>
+    </div>
+    <div class="fb-thanks" id="inc-thanks">
+      <div class="fb-tick">🚨</div>
+      <p>Hazard reported — marker added to map.</p>
+      <small>Stay safe out there. Report expires in 4 hours.</small>
+    </div>
+    <div class="modal-foot" id="inc-foot">
+      <button class="btn-enter" onclick="submitIncident()">Post Hazard Report</button>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+
+<!-- Header -->
+<div id="header">
+  <div>
+    <div class="logo">Rig<em>Rout</em></div>
+  </div>
+  <div class="logo-sub">Commercial Route Intelligence</div>
+  <div class="hspace"></div>
+  <button class="hbtn-fb" onclick="toggleGPS()" id="gps-hbtn" title="My Location">📍 GPS</button>
+  <button class="hbtn-fb" onclick="openShare()" id="share-hbtn" title="Share Route">🔗 Share</button>
+  <button class="hbtn-fb" onclick="openIncident()">🚨 Report</button>
+  <button class="hbtn-fb" onclick="openFeedback()">💬 Feedback</button>
+  <button class="hbtn" onclick="togglePanel()">⚡ Route Audit <span id="risk-count-badge" class="risk-cnt" style="display:none"></span></button>
+  <div id="hazmat-badge" onclick="document.getElementById('p-hazmat').focus()" title="HazMat active — click to edit">⚠ HAZMAT</div>
+  <div class="badge">v2 · OSM Data</div>
+  <div id="server-dot" title="Checking server…" style="width:8px;height:8px;border-radius:50%;background:#888;flex-shrink:0;margin-left:4px;cursor:help" onclick="detectServer()"></div>
+</div>
+
+<div id="body">
+
+<!-- Sidebar -->
+<div id="sidebar">
+
+  <!-- Route -->
+  <div class="sec">
+    <div class="sec-title">Route Planning</div>
+    <div class="field">
+      <label>Origin</label>
+      <div class="route-wrap" style="position:relative;display:flex;gap:4px;align-items:center">
+        <div style="position:relative;flex:1">
+          <div class="rdot origin-dot"></div>
+          <input type="text" id="inp-origin" placeholder="City, address, or zip" autocomplete="off">
+          <div class="sugg" id="sugg-origin"></div>
+        </div>
+        <button onclick="useMyLocation()" title="Use my current GPS location" style="background:var(--blue);border:none;color:#fff;border-radius:5px;padding:5px 7px;cursor:pointer;font-size:13px;flex-shrink:0;height:30px;line-height:1">📍</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Destination</label>
+      <div class="route-wrap" style="position:relative">
+        <div class="rdot dest-dot"></div>
+        <input type="text" id="inp-dest" placeholder="City, address, or zip" autocomplete="off">
+        <div class="sugg" id="sugg-dest"></div>
+      </div>
+    </div>
+    <!-- Via stops injected here by JS -->
+    <div id="via-stops-container"></div>
+    <button id="add-via-btn" onclick="addViaStop()">＋ Add Stop Along Route</button>
+    <button class="btn btn-primary" id="btn-plan" disabled onclick="planRoute()">Plan Route</button>
+    <button class="btn btn-ghost" onclick="clearAll()">Clear</button>
+  </div>
+
+  <!-- Saved Favorites (directly under Route Planning) -->
+  <div class="sec">
+    <div class="sec-title">⭐ Saved Favorites
+      <button onclick="saveFavorite()" title="Save current route or location" style="float:right;background:var(--blue);border:none;color:#fff;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;margin-top:-1px">+ Save</button>
+    </div>
+    <div id="fav-list" style="font-size:10px;color:var(--dim)">No saved favorites yet.</div>
+  </div>
+
+  <!-- Unit Toggles — redesigned -->
+  <div class="sec" id="units-sec">
+    <div class="sec-title" style="margin-bottom:8px">⚖️ Units</div>
+    <div style="display:flex;flex-direction:column;gap:7px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;color:var(--dim)">Distance &amp; Dimensions</span>
+        <div class="toggle" style="font-size:12px;border-radius:6px">
+          <button class="on" id="u-imperial" onclick="setUnits('imperial')" style="padding:5px 13px;font-weight:600">Imperial</button>
+          <button id="u-metric" onclick="setUnits('metric')" style="padding:5px 13px;font-weight:600">Metric</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;color:var(--dim)">Temperature</span>
+        <div class="toggle" style="font-size:12px;border-radius:6px">
+          <button class="on" id="tu-f" onclick="setTempUnit('F')" style="padding:5px 14px;font-weight:600">°F</button>
+          <button id="tu-c" onclick="setTempUnit('C')" style="padding:5px 14px;font-weight:600">°C</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Truck Profile -->
+  <div class="sec">
+    <div class="sec-title">Truck Profile</div>
+    <div class="pgrid">
+      <div class="field"><label id="lbl-height">Height (ft)</label><input type="number" id="p-height" value="13.5" step="0.1" min="8" max="16" oninput="saveProfile()"></div>
+      <div class="field"><label id="lbl-width">Width (ft)</label><input type="number" id="p-width" value="8.5" step="0.1" min="6" max="12" oninput="saveProfile()"></div>
+      <div class="field"><label id="lbl-length">Length (ft)</label><input type="number" id="p-length" value="75" step="1" min="20" max="120" oninput="saveProfile()"></div>
+      <div class="field"><label id="lbl-weight">GVW (lbs)</label><input type="number" id="p-weight" value="80000" step="1000" min="10000" max="200000" oninput="saveProfile()"></div>
+      <div class="field"><label>Axles</label><input type="number" id="p-axles" value="5" min="2" max="9" oninput="saveProfile()"></div>
+      <div class="field">
+        <label>Trailer</label>
+        <select id="p-trailer" onchange="saveProfile()">
+          <option value="53dry">53' Dry Van</option>
+          <option value="48dry">48' Dry Van</option>
+          <option value="reefer">Reefer</option>
+          <option value="flatbed">Flatbed</option>
+          <option value="tanker">Tanker</option>
+          <option value="lowboy">Lowboy</option>
+          <option value="doubles">Doubles</option>
+          <option value="oversized">Oversized</option>
+        </select>
+      </div>
+      <div class="field full">
+        <label>HazMat Class</label>
+        <select id="p-hazmat" onchange="saveProfile(); updateHazmatBadge()">
+          <option value="none">None</option>
+          <option value="1">Class 1 — Explosives</option>
+          <option value="2">Class 2 — Gases</option>
+          <option value="3">Class 3 — Flammable Liquids</option>
+          <option value="4">Class 4 — Flammable Solids</option>
+          <option value="5">Class 5 — Oxidizers</option>
+          <option value="6">Class 6 — Toxic / Infectious</option>
+          <option value="7">Class 7 — Radioactive</option>
+          <option value="8">Class 8 — Corrosives</option>
+          <option value="9">Class 9 — Misc Hazardous</option>
+        </select>
+      </div>
+    </div>
+    <div class="trow">
+      <span class="tlabel">Load Status</span>
+      <div class="toggle">
+        <button class="on" id="t-loaded" onclick="setLoad('loaded')">Loaded</button>
+        <button id="t-empty" onclick="setLoad('empty')">Empty</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Route Options -->
+  <div class="sec">
+    <div class="sec-title">Route Options</div>
+    <div class="checks">
+      <label class="chk"><input type="checkbox" id="opt-interstate" checked> Prefer Interstates / Highways</label>
+      <label class="chk"><input type="checkbox" id="opt-tolls"> Avoid Tolls</label>
+      <label class="chk"><input type="checkbox" id="opt-urban"> Avoid Urban Cores</label>
+      <label class="chk"><input type="checkbox" id="opt-seasonal"> Flag Seasonal Restrictions</label>
+    </div>
+  </div>
+
+  <!-- POI Filters -->
+  <div class="sec">
+    <div class="sec-title">Show Along Route</div>
+    <div class="poi-filters">
+      <div class="ftag" id="ftag-stops"     onclick="togglePOI('stops',this)"     title="Truck Stops &amp; Fuel">⛽</div>
+      <div class="ftag" id="ftag-cardlock"  onclick="togglePOI('cardlock',this)"  title="Cardlocks">💳</div>
+      <div class="ftag" id="ftag-rest"      onclick="togglePOI('rest',this)"      title="Rest Areas &amp; Pull-offs">🅿</div>
+      <div class="ftag"    id="ftag-weigh"     onclick="togglePOI('weigh',this)"     title="Weigh Stations">⚖️</div>
+      <div class="ftag"    id="ftag-repair"    onclick="togglePOI('repair',this)"    title="Truck Repair">🔧</div>
+      <div class="ftag"    id="ftag-bans"      onclick="togglePOI('bans',this)"      title="Road Bans">🚫</div>
+      <div class="ftag"    id="ftag-ev"        onclick="togglePOI('ev',this)"        title="EV / Electric Charging">⚡</div>
+      <div class="ftag"    id="ftag-wx"        onclick="togglePOI('wx',this)"        title="Weather">🌤</div>
+      <div class="ftag on" id="ftag-incidents" onclick="togglePOI('incidents',this)" title="Incidents">🚨</div>
+      <div class="ftag"    id="ftag-custom"    onclick="togglePOI('custom',this)"    title="My Custom Stops">📌</div>
+      <div class="ftag"    id="ftag-border"    onclick="togglePOI('border',this)"    title="Border Crossings">🛃</div>
+      <div class="ftag"    id="ftag-cameras"   onclick="togglePOI('cameras',this)"   title="DOT Cameras">📷</div>
+      <div class="ftag"    id="ftag-restrict"  onclick="togglePOI('restrict',this)"  title="Truck Restrictions (height/weight)">⛔</div>
+      <div class="ftag"    id="ftag-radar"     onclick="togglePOI('radar',this)"     title="Weather Radar">🌧</div>
+    </div>
+  </div>
+
+  <!-- Weather Along Route -->
+  <div class="sec">
+    <div class="sec-title">🌤 Weather Along Route</div>
+    <div id="wx-strip" class="wx-strip">
+      <div style="font-size:10px;color:var(--dim)">Plan a route to fetch live weather.</div>
+    </div>
+  </div>
+
+
+  <!-- Live Incidents -->
+  <div class="sec">
+    <div class="sec-title">🚨 Active Incidents <span id="inc-count" style="font-weight:400;color:var(--dim)"></span></div>
+    <div id="inc-list" style="font-size:10px;color:var(--dim)">No incidents reported near your route.</div>
+    <button class="inc-btn" onclick="openIncident()">+ Report a Hazard</button>
+  </div>
+
+  <!-- Road Bans -->
+  <div class="sec">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <span style="font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.9px">🚫 Live Road Bans</span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <span id="ban-total-badge" style="font-size:11px;font-weight:700;color:var(--red);display:none"></span>
+        <button onclick="fetchRoadBans()" style="background:var(--surf2);border:1px solid var(--border);color:var(--dim);border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer" title="Refresh all feeds">↻ Refresh</button>
+      </span>
+    </div>
+    <!-- Feed status — all sources with live status -->
+    <div id="ban-sources" style="margin-bottom:10px"></div>
+    <!-- Individual ban cards -->
+    <div id="ban-feed-list"></div>
+  </div>
+
+  <!-- Custom Stops -->
+  <div class="sec">
+    <div class="sec-title">📌 Custom Stops
+      <button onclick="openAddStop()" style="float:right;background:var(--blue);border:none;color:#fff;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;margin-top:-1px">+ Add</button>
+    </div>
+    <div id="custom-stop-form" style="display:none;margin-bottom:8px">
+      <input type="text" id="cs-name" placeholder="Stop name" style="margin-bottom:4px">
+      <input type="text" id="cs-note" placeholder="Notes (optional)" style="margin-bottom:4px">
+      <div style="display:flex;gap:4px">
+        <button onclick="saveCustomStop()" style="flex:1;background:var(--blue);border:none;color:#fff;border-radius:4px;padding:5px;font-size:11px;cursor:pointer">Use Map Pin 📍</button>
+        <button onclick="closeAddStop()" style="background:var(--surf2);border:1px solid var(--border);color:var(--dim);border-radius:4px;padding:5px 8px;font-size:11px;cursor:pointer">✕</button>
+      </div>
+      <div style="font-size:9px;color:var(--dim);margin-top:4px">Click the map to place the stop, then click "Use Map Pin"</div>
+    </div>
+    <div id="custom-stops-list" style="font-size:10px;color:var(--dim)">No custom stops added yet.</div>
+  </div>
+
+  <!-- Route Share -->
+  <div class="sec" id="share-sec" style="display:none">
+    <div class="sec-title">🔗 Share This Route</div>
+    <div style="font-size:10px;color:var(--dim);margin-bottom:4px">Anyone with the link can open this route.</div>
+    <div class="share-url-box">
+      <input type="text" id="share-url-input" readonly>
+      <button class="share-copy-btn" id="share-copy-btn" onclick="copyShareLink()">Copy</button>
+    </div>
+  </div>
+
+  <!-- Data note -->
+  <div class="note">
+    <strong>⚠ MVP Preview</strong><br>
+    Routing via OSRM (no truck constraints yet). Stop data is simulated. Live road ban feeds active for BC, AB, SK, MB, ON + 7 US states. Always verify posted signs — driver compliance is your responsibility.
+  </div>
+
+</div><!-- /sidebar -->
+
+<!-- Map -->
+<div id="map-wrap" style="position:relative">
+  <div id="map"></div>
+  <div id="statusbar">Enter origin and destination to plan a route</div>
+  <button id="gps-btn" onclick="toggleGPS()" title="My Location">📍</button>
+  <button id="mobile-toggle" onclick="toggleMobileSidebar()">☰ Menu</button>
+
+  <!-- Layers button + floating panel -->
+  <button id="layers-btn" onclick="toggleLayersPanel()">☰ Layers</button>
+  <div id="layers-panel" class="hidden">
+    <div class="lp-head">
+      <span class="lp-head-title">Map Layers</span>
+      <button class="lp-clear" onclick="clearAllLayers()">Clear All</button>
+    </div>
+
+    <!-- Road Conditions -->
+    <div class="lp-sec">
+      <label class="lp-row">
+        <input type="checkbox" id="lyr-conditions" onchange="toggleConditions(this.checked)">
+        <span class="lp-icon">🛣</span> Road Conditions
+      </label>
+      <div class="cond-legend">
+        <div class="cond-seg" style="background:#4CAF50" title="Good"></div>
+        <div class="cond-seg" style="background:#FFC107" title="Fair"></div>
+        <div class="cond-seg" style="background:#9C27B0" title="Difficult"></div>
+        <div class="cond-seg" style="background:#F44336" title="Closed"></div>
+        <div class="cond-seg" style="background:#888" title="No Report"></div>
+      </div>
+      <div class="cond-labels"><span>Good</span><span>Fair</span><span>Difficult</span><span>Closed</span><span>N/A</span></div>
+    </div>
+
+    <!-- Road Reports -->
+    <div class="lp-sec">
+      <div class="lp-sec-title">Road Reports</div>
+      <label class="lp-row"><input type="checkbox" id="lyr-closures" onchange="toggleEventLayer('closures',this.checked)"><span class="lp-icon">🔴</span> Closures</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-incidents" onchange="toggleEventLayer('incidents',this.checked)" checked><span class="lp-icon">⚠️</span> Incidents</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-roadwork" onchange="toggleEventLayer('roadwork',this.checked)"><span class="lp-icon">🚧</span> Roadwork</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-bans" onchange="togglePOIPanel('bans',this.checked)"><span class="lp-icon">🚫</span> Weight Restrictions</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-cameras" onchange="togglePOIPanel('cameras',this.checked)"><span class="lp-icon">📷</span> Cameras</label>
+      <div class="lp-sub">
+        <div class="lp-sub-item"><div class="lp-sub-dot" style="background:#4FC3F7"></div> Normal</div>
+        <div class="lp-sub-item"><div class="lp-sub-dot" style="background:#80DEEA"></div> Freezing</div>
+        <div class="lp-sub-item"><div class="lp-sub-dot" style="background:#EF9A9A"></div> Alert</div>
+      </div>
+      <label class="lp-row"><input type="checkbox" id="lyr-signs" onchange="toggleEventLayer('signs',this.checked)"><span class="lp-icon">🪧</span> Message Signs</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-radar" onchange="togglePOIPanel('radar',this.checked)"><span class="lp-icon">🌧</span> Weather Radar</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-restrict" onchange="togglePOIPanel('restrict',this.checked)"><span class="lp-icon">⛔</span> Height/Weight Limits</label>
+    </div>
+
+    <!-- Services -->
+    <div class="lp-sec">
+      <div class="lp-sec-title">Services &amp; POIs</div>
+      <label class="lp-row"><input type="checkbox" id="lyr-stops" onchange="togglePOIPanel('stops',this.checked)"><span class="lp-icon">⛽</span> Truck Stops</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-cardlock" onchange="togglePOIPanel('cardlock',this.checked)"><span class="lp-icon">💳</span> Cardlocks</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-rest" onchange="togglePOIPanel('rest',this.checked)"><span class="lp-icon">🅿</span> Rest Areas</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-weigh" onchange="togglePOIPanel('weigh',this.checked)"><span class="lp-icon">⚖️</span> Weigh Stations</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-repair" onchange="togglePOIPanel('repair',this.checked)"><span class="lp-icon">🔧</span> Truck Repair</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-border" onchange="togglePOIPanel('border',this.checked)"><span class="lp-icon">🛃</span> Border Crossings</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-ev" onchange="togglePOIPanel('ev',this.checked)"><span class="lp-icon">⚡</span> EV Charging</label>
+      <label class="lp-row"><input type="checkbox" id="lyr-custom" onchange="togglePOIPanel('custom',this.checked)" checked><span class="lp-icon">📌</span> My Custom Stops</label>
+    </div>
+  </div>
+
+  <!-- Bottom bar: Map / Satellite / Trucker Mode -->
+  <div id="map-bottom-bar">
+    <button class="bbar-btn active" id="bbar-dark" onclick="switchLayerBar('dark')">🌑 Dark</button>
+    <button class="bbar-btn" id="bbar-street" onclick="switchLayerBar('street')">🗺 Map</button>
+    <button class="bbar-btn" id="bbar-satellite" onclick="switchLayerBar('satellite')">🛰 Satellite</button>
+    <button class="bbar-btn bbar-truck" id="trucker-mode-btn" onclick="toggleTruckerMode()">🚛 Trucker Mode</button>
+  </div>
+  <div id="trucker-mode-badge">🚛 TRUCKER MODE ON</div>
+</div>
+
+<!-- Right Panel -->
+<div id="panel">
+  <div class="ph">
+    <span class="ph-title">⚡ Route Intelligence</span>
+    <button class="ph-x" onclick="closePanel()">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="stats" id="stats"></div>
+    <div class="spin" id="spinner">Calculating route and risk profile…</div>
+    <div class="risks">
+      <div class="risk-sec-title">Route Risk Audit</div>
+      <div id="risk-list"></div>
+    </div>
+    <div class="stop-header-row">
+      <div class="stop-htitle">Stops Along Route</div>
+    </div>
+    <div id="stops-list"></div>
+    <div class="wx-sec" id="wx-panel-sec" style="display:none">
+      <div class="wx-sec-title">🌤 Weather Forecast Along Route</div>
+      <div id="wx-panel-list"></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /body -->
+</div><!-- /app -->
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+<script>
+// ── Map init ──────────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: false }).setView([39.8, -98.6], 4);
+
+// ── Tile Layers ───────────────────────────────────────────────────────────────
+const TILE_LAYERS = {
+  dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OSM</a> © <a href="https://carto.com">CARTO</a>', maxZoom:19 }),
+  street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OSM contributors</a>', maxZoom:19 }),
+  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution:'© Esri — Earthstar Geographics', maxZoom:19 }),
+  terrain: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution:'© <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)', maxZoom:17 }),
+  hybrid: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution:'© Esri', maxZoom:19, opacity:1 }),
+};
+// Hybrid labels overlay (roads/names on top of satellite)
+const HYBRID_LABELS = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', { maxZoom:19, opacity:.85 });
+
+let currentTileKey = 'dark';
+TILE_LAYERS.dark.addTo(map);
+
+// Layer switcher control
+const LayerSwitcher = L.Control.extend({
+  onAdd() {
+    const div = L.DomUtil.create('div','leaflet-bar');
+    div.style.cssText='background:var(--surf);border:1px solid var(--border)!important;border-radius:6px;overflow:hidden';
+    const btns = [
+      {key:'dark',label:'🌑 Dark'},
+      {key:'street',label:'🗺 Street'},
+      {key:'satellite',label:'🛰 Satellite'},
+      {key:'hybrid',label:'🛰 Hybrid'},
+      {key:'terrain',label:'⛰ Terrain'},
+    ];
+    btns.forEach(b => {
+      const btn = L.DomUtil.create('div','',div);
+      btn.id = `lyr-${b.key}`;
+      btn.innerHTML = b.label;
+      btn.style.cssText=`padding:5px 10px;font-size:10px;cursor:pointer;color:var(--dim);white-space:nowrap;transition:all .1s;${b.key==='dark'?'background:var(--blue);color:#fff':''}`;
+      btn.onmouseenter=()=>{ if(currentTileKey!==b.key) btn.style.background='var(--surf2)'; };
+      btn.onmouseleave=()=>{ if(currentTileKey!==b.key) btn.style.background=''; };
+      L.DomEvent.on(btn,'click',L.DomEvent.stopPropagation);
+      L.DomEvent.on(btn,'click',()=>switchLayer(b.key));
+    });
+    return div;
+  }
+});
+new LayerSwitcher({position:'topright'}).addTo(map);
+
+function switchLayer(key) {
+  // Remove old
+  TILE_LAYERS[currentTileKey].remove();
+  if (currentTileKey==='hybrid') HYBRID_LABELS.remove();
+  // Add new
+  TILE_LAYERS[key].addTo(map);
+  if (key==='hybrid') HYBRID_LABELS.addTo(map);
+  currentTileKey = key;
+  // Update button styles
+  document.querySelectorAll('[id^="lyr-"]').forEach(b=>{
+    const k = b.id.replace('lyr-','');
+    b.style.background = k===key?'var(--blue)':'';
+    b.style.color = k===key?'#fff':'var(--dim)';
+  });
+}
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+const routeLayer   = L.layerGroup().addTo(map);
+const markerLayer  = L.layerGroup().addTo(map);
+// Cluster options per type
+const clusterOpts = { maxClusterRadius:60, disableClusteringAtZoom:14,
+  iconCreateFunction: function(cluster) {
+    var c = cluster.getChildCount();
+    return L.divIcon({ html:'<div style="background:rgba(40,40,50,.85);color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid rgba(255,255,255,.3)">'+c+'</div>', className:'', iconSize:[32,32] });
+  }
+};
+const poiLayers = {
+  stops:   L.markerClusterGroup(clusterOpts),
+  cardlock:L.markerClusterGroup(clusterOpts),
+  rest:    L.markerClusterGroup(clusterOpts),
+  weigh:   L.markerClusterGroup(clusterOpts),
+  repair:  L.markerClusterGroup(clusterOpts),
+  bans:    L.layerGroup(),   // bans use circles, no clustering
+  ev:      L.markerClusterGroup(clusterOpts),
+  border:  L.markerClusterGroup(clusterOpts),
+};
+
+// ── Server API ───────────────────────────────────────────────────────────────
+const API_BASE = 'http://localhost:3001';
+let serverAvailable = false;
+async function detectServer() {
+  try {
+    const r = await fetch(API_BASE+'/api/status', { signal:AbortSignal.timeout(1500) });
+    serverAvailable = r.ok;
+  } catch(e) { serverAvailable = false; }
+  const ind = document.getElementById('server-dot');
+  if (ind) {
+    ind.style.background = serverAvailable ? '#3DB87A' : '#888';
+    ind.title = serverAvailable ? 'RigRout server running — server-side data active' : 'No local server — using direct APIs';
+  }
+  return serverAvailable;
+}
+detectServer();
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let originCoord = null, destCoord = null, loadStatus = 'loaded';
+let viaStops = []; // [{id, coord:[lat,lon], text:''}]
+let units = 'imperial'; // 'imperial' | 'metric'
+let tempUnit = 'F';    // 'F' | 'C'
+let _lastWxResults = null; // cache for re-render on unit switch
+let gcTimers = {};
+
+// ── Unit conversions ──────────────────────────────────────────────────────────
+const FT_TO_M  = 0.3048;
+const LBS_TO_KG = 0.453592;
+const MI_TO_KM  = 1.60934;
+
+// Returns current height/width/length in FEET (internal always imperial)
+function getHeightFt()  { const v = +document.getElementById('p-height').value; return units==='metric' ? v / FT_TO_M : v; }
+function getWidthFt()   { const v = +document.getElementById('p-width').value;  return units==='metric' ? v / FT_TO_M : v; }
+function getLengthFt()  { const v = +document.getElementById('p-length').value; return units==='metric' ? v / FT_TO_M : v; }
+function getWeightLbs() { const v = +document.getElementById('p-weight').value; return units==='metric' ? v / LBS_TO_KG : v; }
+
+function setUnits(u) {
+  const prev = units;
+  units = u;
+  document.getElementById('u-imperial').classList.toggle('on', u==='imperial');
+  document.getElementById('u-metric').classList.toggle('on', u==='metric');
+
+  // Convert displayed values
+  const h = document.getElementById('p-height');
+  const w = document.getElementById('p-width');
+  const l = document.getElementById('p-length');
+  const wt = document.getElementById('p-weight');
+
+  if (prev !== u) {
+    if (u === 'metric') {
+      h.value  = (+h.value  * FT_TO_M).toFixed(2);
+      w.value  = (+w.value  * FT_TO_M).toFixed(2);
+      l.value  = (+l.value  * FT_TO_M).toFixed(1);
+      wt.value = Math.round(+wt.value * LBS_TO_KG);
+      h.step = '0.01'; h.min='2'; h.max='5';
+      w.step = '0.01'; w.min='1'; w.max='4';
+      l.step = '0.1';  l.min='5'; l.max='40';
+      wt.step = '100'; wt.min='1000'; wt.max='100000';
+    } else {
+      h.value  = (+h.value  / FT_TO_M).toFixed(1);
+      w.value  = (+w.value  / FT_TO_M).toFixed(1);
+      l.value  = Math.round(+l.value  / FT_TO_M);
+      wt.value = Math.round(+wt.value / LBS_TO_KG);
+      h.step = '0.1'; h.min='8';  h.max='16';
+      w.step = '0.1'; w.min='6';  w.max='12';
+      l.step = '1';   l.min='20'; l.max='120';
+      wt.step = '1000'; wt.min='10000'; wt.max='200000';
+    }
+  }
+
+  // Update labels
+  document.getElementById('lbl-height').textContent = u==='metric' ? 'Height (m)' : 'Height (ft)';
+  document.getElementById('lbl-width').textContent  = u==='metric' ? 'Width (m)'  : 'Width (ft)';
+  document.getElementById('lbl-length').textContent = u==='metric' ? 'Length (m)' : 'Length (ft)';
+  document.getElementById('lbl-weight').textContent = u==='metric' ? 'GVW (kg)'   : 'GVW (lbs)';
+}
+
+// ── Geocoding (Nominatim) ─────────────────────────────────────────────────────
+function setupGeo(inpId, suggId, isOrigin) {
+  const inp  = document.getElementById(inpId);
+  const sugg = document.getElementById(suggId);
+
+  inp.addEventListener('input', () => {
+    const q = inp.value.trim();
+    clearTimeout(gcTimers[inpId]);
+    if (q.length < 3) { sugg.style.display = 'none'; return; }
+    gcTimers[inpId] = setTimeout(() => doGeo(q, sugg, inp, isOrigin), 450);
+  });
+  inp.addEventListener('blur', () => setTimeout(() => { sugg.style.display = 'none'; }, 180));
+}
+
+async function doGeo(q, sugg, inp, isOrigin) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=us,ca`, { headers: {'Accept-Language':'en'} });
+    const data = await r.json();
+    sugg.innerHTML = '';
+    if (!data.length) { sugg.style.display = 'none'; return; }
+    data.forEach(item => {
+      const d = document.createElement('div');
+      d.className = 'sugg-item';
+      d.textContent = item.display_name.split(',').slice(0,3).join(', ');
+      d.addEventListener('mousedown', () => {
+        inp.value = d.textContent;
+        sugg.style.display = 'none';
+        const coord = [+item.lat, +item.lon];
+        if (isOrigin) { originCoord = coord; placePin(coord, 'origin'); }
+        else          { destCoord   = coord; placePin(coord, 'dest');   }
+        checkReady();
+      });
+      sugg.appendChild(d);
+    });
+    sugg.style.display = 'block';
+  } catch(e) { console.warn('Geocode:', e); }
+}
+
+function placePin(coord, type) {
+  markerLayer.eachLayer(l => { if (l.options._t === type) markerLayer.removeLayer(l); });
+  const col  = type === 'origin' ? '#3DB87A' : '#E05252';
+  const size = 14;
+  const icon = L.divIcon({ className:'', html:`<div style="width:${size}px;height:${size}px;background:${col};border:2.5px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.55)"></div>`, iconSize:[size,size], iconAnchor:[size/2,size/2] });
+  L.marker(coord, { icon, _t: type }).addTo(markerLayer);
+  map.panTo(coord, { animate: true, duration: .4 });
+}
+
+function checkReady() {
+  document.getElementById('btn-plan').disabled = !(originCoord && destCoord);
+}
+
+// ── Via Stop Management ───────────────────────────────────────────────────────
+var _viaGcTimers = {};
+
+function addViaStop() {
+  viaStops.push({ id: Date.now(), coord: null, text: '' });
+  renderViaStops();
+}
+
+function removeViaStop(id) {
+  viaStops = viaStops.filter(function(s) { return s.id !== id; });
+  renderViaStops();
+  updateViaPins();
+}
+
+function renderViaStops() {
+  var container = document.getElementById('via-stops-container');
+  if (!container) return;
+  container.innerHTML = viaStops.map(function(s, idx) {
+    return '<div class="via-stop-row" id="via-row-' + s.id + '">' +
+      '<div style="position:relative;flex:1">' +
+        '<div style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:9px;height:9px;background:var(--blue);border-radius:50%"></div>' +
+        '<input type="text" id="via-inp-' + s.id + '" placeholder="Stop ' + (idx+1) + ': city, address, or zip" autocomplete="off" style="padding-left:28px">' +
+        '<div class="sugg" id="via-sugg-' + s.id + '"></div>' +
+      '</div>' +
+      '<button class="via-remove-btn" onclick="removeViaStop(' + s.id + ')" title="Remove stop">✕</button>' +
+    '</div>';
+  }).join('');
+  // Restore existing text and set up geocoding for each field
+  viaStops.forEach(function(s) {
+    var inp = document.getElementById('via-inp-' + s.id);
+    if (inp && s.text) inp.value = s.text;
+    setupViaGeo(s.id);
+  });
+}
+
+function setupViaGeo(id) {
+  var inp  = document.getElementById('via-inp-' + id);
+  var sugg = document.getElementById('via-sugg-' + id);
+  if (!inp || !sugg) return;
+  inp.addEventListener('input', function() {
+    var q = inp.value.trim();
+    var s = viaStops.find(function(x) { return x.id === id; });
+    if (s) { s.text = q; if (!q) { s.coord = null; updateViaPins(); } }
+    clearTimeout(_viaGcTimers[id]);
+    if (q.length < 3) { sugg.style.display = 'none'; return; }
+    _viaGcTimers[id] = setTimeout(function() { doViaGeo(id, q, sugg, inp); }, 450);
+  });
+  inp.addEventListener('blur', function() { setTimeout(function() { sugg.style.display = 'none'; }, 180); });
+}
+
+async function doViaGeo(id, q, sugg, inp) {
+  try {
+    var r = await fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(q) +
+      '&format=json&limit=5&countrycodes=us,ca', { headers: { 'Accept-Language': 'en' } });
+    var data = await r.json();
+    sugg.innerHTML = '';
+    if (!data.length) { sugg.style.display = 'none'; return; }
+    data.forEach(function(item) {
+      var d = document.createElement('div');
+      d.className = 'sugg-item';
+      d.textContent = item.display_name.split(',').slice(0, 3).join(', ');
+      d.addEventListener('mousedown', function() {
+        inp.value = d.textContent;
+        sugg.style.display = 'none';
+        var s = viaStops.find(function(x) { return x.id === id; });
+        if (s) { s.coord = [+item.lat, +item.lon]; s.text = d.textContent; }
+        updateViaPins();
+      });
+      sugg.appendChild(d);
+    });
+    sugg.style.display = 'block';
+  } catch(e) { console.warn('Via geocode:', e); }
+}
+
+function updateViaPins() {
+  // Remove old via markers
+  var toRemove = [];
+  markerLayer.eachLayer(function(l) { if (l.options._t && String(l.options._t).startsWith('via')) toRemove.push(l); });
+  toRemove.forEach(function(l) { markerLayer.removeLayer(l); });
+  // Add current via markers
+  viaStops.forEach(function(s) {
+    if (!s.coord) return;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="width:11px;height:11px;background:#2C7DA0;border:2.5px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.55)"></div>',
+      iconSize: [11, 11], iconAnchor: [5.5, 5.5]
+    });
+    L.marker(s.coord, { icon: icon, _t: 'via' + s.id }).addTo(markerLayer);
+  });
+}
+
+// ── Panel ─────────────────────────────────────────────────────────────────────
+function togglePanel() {
+  const p = document.getElementById('panel');
+  if (p) p.classList.toggle('open');
+}
+function closePanel() {
+  const p = document.getElementById('panel');
+  if (p) p.classList.remove('open');
+}
+
+// ── Clear route ───────────────────────────────────────────────────────────────
+function clearAll() {
+  originCoord = null; destCoord = null;
+  viaStops = [];
+  renderViaStops();
+  document.getElementById('inp-origin').value = '';
+  document.getElementById('inp-dest').value = '';
+  routeLayer.clearLayers();
+  markerLayer.clearLayers();
+  checkReady();
+  setStatus('Route cleared');
+  const shareHbtn = document.getElementById('share-hbtn');
+  if (shareHbtn) shareHbtn.style.display = 'none';
+  const shareSec = document.getElementById('share-sec');
+  if (shareSec) shareSec.style.display = 'none';
+}
+
+// ── Load status ───────────────────────────────────────────────────────────────
+function setLoad(s) {
+  loadStatus = s;
+  document.getElementById('t-loaded').classList.toggle('on', s === 'loaded');
+  document.getElementById('t-empty').classList.toggle('on', s === 'empty');
+}
+
+// ── POI icons (SVG pins) ─────────────────────────────────────────────────────
+function makePinIcon(color, label) {
+  var svg = '<svg width="34" height="44" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M13 1C6.925 1 2 5.925 2 12c0 8.5 11 21 11 21S24 20.5 24 12c0-6.075-4.925-11-11-11z" fill="' + color + '" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>' +
+    '<text x="13" y="14" text-anchor="middle" dominant-baseline="middle" font-size="13" fill="#fff">' + label + '</text>' +
+    '</svg>';
+  return L.divIcon({ className:'', html:svg, iconSize:[34,44], iconAnchor:[17,44], popupAnchor:[0,-44] });
+}
+
+const POI_ICONS = {
+  stops:    { color:'#E8920A', sym:'⛽' },
+  cardlock: { color:'#2C7DA0', sym:'💳' },
+  rest:     { color:'#3DB87A', sym:'🅿' },
+  weigh:    { color:'#9B59B6', sym:'⚖' },
+  repair:   { color:'#E05252', sym:'🔧' },
+  ev:       { color:'#00BCD4', sym:'⚡' },
+  custom:   { color:'#F5A623', sym:'📌' },
+  border:   { color:'#C0392B', sym:'🛃' },
+};
+
+// ── Overpass API — live POI fetch ─────────────────────────────────────────────
+const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const OVERPASS_QUERIES = {
+  stops:    '(node["amenity"="fuel"]["hgv"~"yes|designated|only"](BBOX);node["amenity"="fuel"]["truck"~"yes|designated"](BBOX);node["amenity"="fuel"]["name"~"Pilot|Flying J|Love|Petro|TA Travel|Sapp|Kwik Trip|Kwik Star|Casey|Ambest|Boss|Roady|Southern States|Jubitz|Iowa 80|Fareway|Travel Center|TravelCenter",i](BBOX);node["amenity"="truck_stop"](BBOX);node["highway"="services"](BBOX);way["highway"="services"](BBOX););',
+  cardlock: '(node["amenity"="fuel"]["name"~"Cardlock|Petro-Pass|Pacific Pride|Fuelman|CFN|Esso Cardlock|Husky Cardlock|Shell Cardlock",i](BBOX);node["amenity"="fuel"]["cardlock"="yes"](BBOX);node["amenity"="fuel"]["access"="private"](BBOX););',
+  rest:     '(node["highway"="rest_area"](BBOX);way["highway"="rest_area"](BBOX);relation["highway"="rest_area"](BBOX);node["amenity"="rest_area"](BBOX);way["amenity"="rest_area"](BBOX);node["highway"="layby"](BBOX);way["highway"="layby"](BBOX);node["amenity"="parking"]["truck"~"yes|designated"](BBOX);node["name"~"Rest Area|Welcome Center|Travel Plaza|Pull.?off|Picnic Area|Scenic Pullout",i](BBOX););',
+  weigh:    '(node["amenity"="weighbridge"](BBOX);node["highway"="weigh_station"](BBOX);node["name"~"Weigh Station|Scale|Port of Entry|POE|Inspection Station",i](BBOX);way["amenity"="weighbridge"](BBOX););',
+  repair:   '(node["shop"="truck_repair"](BBOX);node["shop"="truck"](BBOX);node["amenity"="vehicle_inspection"]["hgv"="yes"](BBOX);node["name"~"Kenworth|Peterbilt|Freightliner|Volvo Truck|International Truck|Mack Truck|Western Star|Rush Truck|Speedco|Speedway|Bruckner|Fontaine",i](BBOX);node["shop"="tyres"]["hgv"~"yes|designated"](BBOX););',
+  ev:       '(node["amenity"="charging_station"]["hgv"~"yes|designated"](BBOX);node["amenity"="charging_station"]["truck"~"yes|designated"](BBOX);node["amenity"="charging_station"]["name"~"Electrify|Tesla|ChargePoint|EVgo|Blink",i](BBOX););',
+  restrict: '(way["maxheight"](BBOX);way["maxweight"](BBOX);way["maxwidth"](BBOX);way["hgv"="no"](BBOX);way["access"="no"]["hgv"](BBOX););',
+  border:   '(node["barrier"="border_control"](BBOX);node["amenity"="border_control"](BBOX);node["border_control"="yes"](BBOX);node["boundary"="border_zone"](BBOX);node["name"~"Border|Customs|Port of Entry|POE|Douane|Frontière|CBSA|CBP|US Customs|Canada Border",i](BBOX);node["office"="customs"](BBOX););',
+};
+
+const poiCache = {};
+const poiFetching = {};
+
+async function fetchPOILayer(type) {
+  var ftag = document.getElementById('ftag-' + type);
+  if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym + ' …';
+  var bounds = map.getBounds();
+  var bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast();
+  var query = '[out:json][timeout:20];' + OVERPASS_QUERIES[type].replace(/BBOX/g, bbox) + 'out center;';
+  try {
+    var r = await fetch(OVERPASS_URL, {
+      method:'POST', body:'data=' + encodeURIComponent(query),
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var d = await r.json();
+    var pts = (d.elements||[]).map(function(e) {
+      var lat = e.lat || (e.center && e.center.lat);
+      var lon = e.lon || (e.center && e.center.lon);
+      if (!lat || !lon) return null;
+      var tags = e.tags || {};
+      return {
+        lat: lat, lon: lon,
+        name: tags.name || tags.operator || tags.brand || typeLabel(type),
+        amen: buildAmenString(tags, type),
+        opening: tags.opening_hours || ''
+      };
+    }).filter(Boolean);
+    poiCache[type] = pts;
+    if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym + (pts.length ? ' ' + pts.length : '');
+    return pts;
+  } catch(e) {
+    console.warn('Overpass ' + type + ':', e.message);
+    if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym;
+    return [];
+  }
+}
+
+function typeLabel(type) {
+  return {stops:'Truck Stop',cardlock:'Cardlock',rest:'Rest Area',weigh:'Weigh Station',repair:'Truck Repair',ev:'EV Charging',border:'Border Crossing'}[type] || type;
+}
+
+function buildAmenString(tags, type) {
+  var parts = [];
+  if (tags.fuel) parts.push('Fuel');
+  if (tags['fuel:diesel']==='yes') parts.push('Diesel');
+  if (tags['fuel:adblue']==='yes'||tags['fuel:def']==='yes') parts.push('DEF/AdBlue');
+  if (tags.shower==='yes') parts.push('Showers');
+  if (tags.toilets==='yes'||tags['toilets:disposal']) parts.push('Washrooms');
+  if (tags.restaurant==='yes'||tags['amenity']==='restaurant') parts.push('Restaurant');
+  if (tags.wifi==='yes'||tags['internet_access']==='wlan') parts.push('Wi-Fi');
+  if (tags.scales==='yes') parts.push('Scale');
+  if (type==='ev' && tags.capacity) parts.push(tags.capacity + ' ports');
+  if (type==='border') {
+    if (tags.opening_hours) parts.push(tags.opening_hours);
+    if (tags.lanes) parts.push(tags.lanes + ' lanes');
+    if (tags['fee']=='yes') parts.push('Fee');
+    if (tags['truck']=='no') parts.push('⚠ No Trucks');
+    if (tags['hgv']=='yes'||tags['hgv']=='designated') parts.push('✓ Trucks allowed');
+    if (tags['border_crossing:travel_document']) parts.push('Docs: '+tags['border_crossing:travel_document']);
+  }
+  if (tags.operator) parts.push(tags.operator);
+  return parts.length ? parts.join(' · ') : typeLabel(type);
+}
+
+function renderPOILayer(type, pts) {
+  var layer = poiLayers[type];
+  if (!layer) return;
+  layer.clearLayers();
+  var icon = makePinIcon((POI_ICONS[type]||{color:'#888'}).color, (POI_ICONS[type]||{sym:'?'}).sym);
+  (pts||[]).forEach(function(p) {
+    var sym = (POI_ICONS[type]||{sym:''}).sym;
+    var popup = '<div style="font-size:13px;min-width:160px">' +
+      '<div style="font-weight:700;font-size:15px;margin-bottom:4px">' + sym + ' ' + p.name + '</div>' +
+      (p.amen ? '<div style="color:#666;font-size:12px;margin-bottom:2px">' + p.amen + '</div>' : '') +
+      (p.opening ? '<div style="color:#888;font-size:11px">🕐 ' + p.opening + '</div>' : '') +
+      '</div>';
+    L.marker([p.lat, p.lon], { icon: icon }).bindPopup(popup, {maxWidth:280}).addTo(layer);
+  });
+  map.addLayer(layer);
+}
+
+let incidentLayer    = L.layerGroup().addTo(map);
+let cameraLayer     = L.markerClusterGroup(Object.assign({}, clusterOpts, { maxClusterRadius:80 }));
+let restrictLayer   = L.layerGroup();
+let radarLayer      = null;  // TileLayer, created on demand
+let radarFrames     = [];
+let radarIdx        = 0;
+let radarTimer      = null;
+let incidents = JSON.parse(localStorage.getItem('rigrout_incidents') || '[]');
+let poiVisible = { stops: false, cardlock: false, rest: false, weigh: false, repair: false, bans: false, incidents: true, ev: false, wx: false, custom: true, border: false, cameras: false, restrict: false, radar: false };
+let customLayer   = L.layerGroup().addTo(map);
+let weatherMapLayer = L.layerGroup().addTo(map);
+
+function togglePOI(type, el) {
+  poiVisible[type] = !poiVisible[type];
+  el.classList.toggle('on', poiVisible[type]);
+
+  if (type === 'bans') {
+    poiVisible[type] ? map.addLayer(poiLayers.bans) : map.removeLayer(poiLayers.bans);
+    return;
+  }
+  if (type === 'incidents') {
+    poiVisible[type] ? map.addLayer(incidentLayer) : map.removeLayer(incidentLayer);
+    return;
+  }
+  if (type === 'custom') {
+    poiVisible[type] ? map.addLayer(customLayer) : map.removeLayer(customLayer);
+    return;
+  }
+  if (type === 'wx') { if (poiVisible.wx) fetchWeather(); return; }
+
+  if (type === 'cameras') {
+    if (poiVisible.cameras) {
+      map.addLayer(cameraLayer);
+      if (cameraLayer.getLayers().length === 0) fetchCameras();
+    } else { map.removeLayer(cameraLayer); }
+    return;
+  }
+  if (type === 'restrict') {
+    if (poiVisible.restrict) {
+      map.addLayer(restrictLayer);
+      if (restrictLayer.getLayers().length === 0) fetchRestrictions();
+    } else { map.removeLayer(restrictLayer); }
+    return;
+  }
+  if (type === 'radar') {
+    if (poiVisible.radar) { startRadar(); }
+    else { stopRadar(); }
+    return;
+  }
+
+  var layer = poiLayers[type];
+  if (!layer) return;
+
+  if (poiVisible[type]) {
+    if (poiCache[type] && poiCache[type].length) {
+      renderPOILayer(type, poiCache[type]);
+    } else if (map.getZoom() >= 7) {
+      fetchPOILayer(type).then(function(pts) { renderPOILayer(type, pts); });
+    } else {
+      setStatus('Zoom in or plan a route to load ' + typeLabel(type) + 's');
+      // Try anyway with current bounds
+      fetchPOILayer(type).then(function(pts) { renderPOILayer(type, pts); });
+    }
+  } else {
+    map.removeLayer(layer);
+    layer.clearLayers();
+  }
+}
+
+// Auto-refresh visible layers when map moves significantly
+var moveTimer = null;
+map.on('moveend', function() {
+  clearTimeout(moveTimer);
+  moveTimer = setTimeout(function() {
+    if (map.getZoom() < 7) return; // too zoomed out — skip auto-refresh
+    Object.keys(poiVisible).forEach(function(type) {
+      if (poiVisible[type] && poiLayers[type] && OVERPASS_QUERIES[type]) {
+        delete poiCache[type];
+        fetchPOILayer(type).then(function(pts) { renderPOILayer(type, pts); });
+      }
+    });
+  }, 1500);
+});
+
+function initPOILayers() {
+  // Don't auto-fetch on startup — map is too zoomed out (whole continent = Overpass timeout).
+  // Layers populate automatically when a route is planned or when user zooms in and toggles.
+  renderCustomStops();
+  // Show hint in sidebar that stops load on route plan
+  var ftag = document.getElementById('ftag-stops');
+  if (ftag) ftag.title = 'Truck Stops — plan a route to load';
+}
+
+// ── Custom Stops ──────────────────────────────────────────────────────────────
+var customStopPending = null; // lat/lon set by map click while adding
+var customStopAdding  = false;
+
+function openAddStop() {
+  document.getElementById('custom-stop-form').style.display = 'block';
+  customStopAdding = true;
+  setStatus('📌 Click the map to place your custom stop');
+  map.once('click', function(e) {
+    customStopPending = [e.latlng.lat, e.latlng.lng];
+    setStatus('📌 Location set — give it a name and click "Use Map Pin"');
+  });
+}
+function closeAddStop() {
+  document.getElementById('custom-stop-form').style.display = 'none';
+  customStopAdding = false;
+  customStopPending = null;
+  setStatus('');
+}
+function saveCustomStop() {
+  var name = (document.getElementById('cs-name').value || '').trim();
+  var note = (document.getElementById('cs-note').value || '').trim();
+  if (!name) { alert('Enter a stop name'); return; }
+  var coord = customStopPending;
+  if (!coord) {
+    // Use map center as fallback
+    var c = map.getCenter();
+    coord = [c.lat, c.lng];
+  }
+  var stops = loadCustomStops();
+  stops.unshift({ id: Date.now(), name: name, note: note, lat: coord[0], lon: coord[1] });
+  if (stops.length > 30) stops = stops.slice(0, 30);
+  localStorage.setItem('rigrout_custom_stops', JSON.stringify(stops));
+  renderCustomStops();
+  closeAddStop();
+  document.getElementById('cs-name').value = '';
+  document.getElementById('cs-note').value = '';
+  setStatus('📌 Stop added: ' + name);
+}
+function deleteCustomStop(id) {
+  var stops = loadCustomStops().filter(function(s){ return s.id !== id; });
+  localStorage.setItem('rigrout_custom_stops', JSON.stringify(stops));
+  renderCustomStops();
+}
+function loadCustomStops() {
+  try { return JSON.parse(localStorage.getItem('rigrout_custom_stops') || '[]'); }
+  catch(e) { return []; }
+}
+function renderCustomStops() {
+  var el = document.getElementById('custom-stops-list');
+  if (!el) return;
+  var stops = loadCustomStops();
+  customLayer.clearLayers();
+  if (!stops.length) {
+    el.innerHTML = '<div style="color:var(--dim);font-size:10px;padding:4px 0">No custom stops added yet.</div>';
+    return;
+  }
+  var icon = makePinIcon('#F5A623', '📌');
+  stops.forEach(function(s) {
+    L.marker([s.lat, s.lon], { icon: icon })
+     .bindPopup('<strong>' + s.name + '</strong>' + (s.note ? '<br>' + s.note : ''))
+     .addTo(customLayer);
+  });
+  if (poiVisible.custom) map.addLayer(customLayer);
+  el.innerHTML = stops.map(function(s) {
+    return '<div style="display:flex;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid var(--border)">' +
+      '<span style="font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (s.note||'') + '">📌 ' + s.name + '</span>' +
+      '<button onclick="map.setView([' + s.lat + ',' + s.lon + '],14)" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:10px;padding:0 3px" title="Zoom to">🎯</button>' +
+      '<button onclick="deleteCustomStop(' + s.id + ')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px;padding:0 3px" title="Remove">✕</button>' +
+      '</div>';
+  }).join('');
+}
+
+// ── GPS tracking ──────────────────────────────────────────────────────────────
+let gpsWatcher = null;
+let gpsMarker  = null;
+function toggleGPS() {
+  const btn = document.getElementById('gps-hbtn');
+  if (gpsWatcher) {
+    navigator.geolocation.clearWatch(gpsWatcher);
+    gpsWatcher = null;
+    if (gpsMarker) { map.removeLayer(gpsMarker); gpsMarker = null; }
+    if (btn) { btn.classList.remove('on'); btn.textContent = '📍 GPS'; }
+    setStatus('GPS tracking off');
+  } else {
+    if (!navigator.geolocation) { setStatus('GPS not supported'); return; }
+    if (btn) btn.textContent = '📍 …';
+    gpsWatcher = navigator.geolocation.watchPosition(pos => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+      const icon = L.divIcon({ className:'', html:'<div style="width:14px;height:14px;background:#3DB87A;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 3px rgba(61,184,122,.35)"></div>', iconSize:[14,14], iconAnchor:[7,7] });
+      if (!gpsMarker) {
+        gpsMarker = L.marker([lat, lng], { icon }).addTo(map);
+        map.setView([lat, lng], 11);
+      } else {
+        gpsMarker.setLatLng([lat, lng]);
+      }
+      gpsMarker.setIcon(icon);
+      if (btn) { btn.classList.add('on'); btn.textContent = '📍 Live'; }
+    }, err => {
+      if (btn) { btn.classList.remove('on'); btn.textContent = '📍 GPS'; }
+      setStatus('GPS error: ' + (err.message || 'denied'));
+    }, { enableHighAccuracy: true });
+  }
+}
+
+
+// ── Incidents ─────────────────────────────────────────────────────────────────
+function renderIncidents() {
+  const el = document.getElementById('inc-list');
+  const badge = document.getElementById('inc-count');
+  incidentLayer.clearLayers();
+  const fresh = incidents.filter(i => Date.now() - i.ts < 4 * 3600 * 1000);
+  incidents = fresh;
+  localStorage.setItem('rigrout_incidents', JSON.stringify(fresh));
+  const active = fresh.filter(i => i.status !== 'cleared');
+  if (badge) badge.textContent = active.length ? `(${active.length})` : '';
+  if (!el) return;
+  if (!fresh.length) { el.innerHTML = '<div style="color:var(--dim);font-size:10px">No incidents reported in your area.</div>'; return; }
+  el.innerHTML = fresh.map(i => {
+    const age = Math.round((Date.now() - i.ts) / 60000);
+    const ageStr = age < 60 ? age+'m' : Math.round(age/60)+'h';
+    const cleared = i.status === 'cleared';
+    const STATUS_OPTS = ['active','slowing','cleared'];
+    const statusLabel = { active:'🔴 Active', slowing:'🟡 Slowing', cleared:'✅ Cleared' };
+    return `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;opacity:${cleared?'0.5':'1'}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
+        <span style="font-weight:700;color:var(--text)">${cleared?'✅':'🚨'} ${i.type}</span>
+        <span style="color:var(--dim);font-size:10px">${ageStr} ago</span>
+      </div>
+      ${i.note ? `<div style="color:var(--dim);font-size:10px;margin:2px 0">${i.note}</div>` : ''}
+      <div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap">
+        <select onchange="updateIncidentStatus('${i.id}',this.value)" style="font-size:10px;padding:2px 4px;background:var(--surf2);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer">
+          ${STATUS_OPTS.map(s=>`<option value="${s}"${i.status===s||(!i.status&&s==='active')?' selected':''}>${statusLabel[s]}</option>`).join('')}
+        </select>
+        <button onclick="removeIncident('${i.id}')" style="font-size:10px;padding:2px 7px;background:rgba(224,82,82,.15);border:1px solid rgba(224,82,82,.3);color:#F08080;border-radius:4px;cursor:pointer">🗑 Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+  fresh.forEach(i => {
+    if (i.lat && i.lon && i.status !== 'cleared') {
+      const col = i.status === 'slowing' ? '#F5A623' : '#E05252';
+      L.circleMarker([i.lat, i.lon], { radius:8, color:col, fillColor:col, fillOpacity:0.7, weight:2 })
+       .bindPopup(`<strong>${i.type}</strong><br>${i.note||''}<br><small>${i.status||'active'}</small>`)
+       .addTo(incidentLayer);
+    }
+  });
+}
+function updateIncidentStatus(id, status) {
+  incidents = incidents.map(i => i.id == id ? Object.assign({}, i, { status }) : i);
+  localStorage.setItem('rigrout_incidents', JSON.stringify(incidents));
+  renderIncidents();
+  setStatus(status === 'cleared' ? '✅ Hazard marked as cleared' : '🟡 Hazard status updated');
+}
+function removeIncident(id) {
+  incidents = incidents.filter(i => i.id != id);
+  localStorage.setItem('rigrout_incidents', JSON.stringify(incidents));
+  renderIncidents();
+  setStatus('🗑 Hazard removed');
+}
+function openIncident() {
+  document.getElementById('incident-overlay').classList.remove('hidden');
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(pos => {
+      const el = document.getElementById('inc-location');
+      if (el && !el.value) el.value = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+    }, () => {}, { timeout: 5000 });
+  }
+}
+function closeIncident() {
+  document.getElementById('incident-overlay').classList.add('hidden');
+}
+function submitIncident() {
+  const type = document.getElementById('inc-type')?.value;
+  const note = document.getElementById('inc-desc')?.value?.trim();
+  const locStr = document.getElementById('inc-location')?.value?.trim();
+  if (!type) { alert('Select a hazard type'); return; }
+  let lat = null, lon = null;
+  if (locStr) {
+    const parts = locStr.split(',');
+    if (parts.length === 2) { lat = parseFloat(parts[0]); lon = parseFloat(parts[1]); }
+  }
+  incidents.unshift({ id: Date.now(), ts: Date.now(), type, note, lat, lon });
+  if (incidents.length > 50) incidents = incidents.slice(0, 50);
+  localStorage.setItem('rigrout_incidents', JSON.stringify(incidents));
+  renderIncidents();
+  const form = document.getElementById('inc-form-body');
+  const foot = document.getElementById('inc-foot');
+  const thanks = document.getElementById('inc-thanks');
+  if (form) form.style.display = 'none';
+  if (foot) foot.style.display = 'none';
+  if (thanks) thanks.style.display = 'flex';
+  setTimeout(() => {
+    closeIncident();
+    if (form)   form.style.display = '';
+    if (foot)   foot.style.display = '';
+    if (thanks) thanks.style.display = 'none';
+    if (document.getElementById('inc-desc')) document.getElementById('inc-desc').value = '';
+    if (document.getElementById('inc-location')) document.getElementById('inc-location').value = '';
+  }, 2000);
+  setStatus('🚨 Hazard reported — visible for 4 hours');
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 2 — Cameras · Restrictions · Radar
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── DOT Cameras ──────────────────────────────────────────────────────────────
+async function fetchCameras() {
+  var ftag = document.getElementById('ftag-cameras');
+  if (ftag) ftag.textContent = '📷 …';
+  cameraLayer.clearLayers();
+
+  var sources = [];
+
+  // Server route (handles CORS for all states)
+  if (serverAvailable) {
+    try {
+      var bounds = map.getBounds();
+      var bbox = bounds.getSouth()+','+bounds.getWest()+','+bounds.getNorth()+','+bounds.getEast();
+      var r = await fetch(API_BASE+'/api/layers?types=cameras&bbox='+bbox, { signal:AbortSignal.timeout(20000) });
+      var d = await r.json();
+      sources = (d.layers && d.layers.cameras) || [];
+    } catch(e) { console.warn('Camera server fetch:', e.message); }
+  }
+
+  // Fallback: BC DriveBC cameras (public, CORS-enabled)
+  if (!sources.length) {
+    try {
+      var r = await fetch('https://api.open511.gov.bc.ca/cameras?format=json&limit=200', { signal:AbortSignal.timeout(10000) });
+      var d = await r.json();
+      sources = (d.cameras||[]).map(function(c){
+        var coords = c.geography && c.geography.coordinates;
+        return { lat: coords && coords[1], lon: coords && coords[0],
+          title: c.name || 'BC Camera',
+          icon:'📷', color:'#607D8B', source:'BC DriveBC',
+          props:{ imageUrl: c.links && c.links.find(function(l){return l.rel==='related';}) && c.links.find(function(l){return l.rel==='related';}).href || '' }
+        };
+      }).filter(function(c){ return c.lat && c.lon; });
+    } catch(e) { console.warn('BC cameras:', e.message); }
+  }
+
+  var camIcon = L.divIcon({ html:'<div style="background:#37474F;color:#fff;border-radius:5px;padding:2px 4px;font-size:13px;border:1px solid rgba(255,255,255,.3)">📷</div>', className:'', iconSize:[28,22] });
+
+  sources.forEach(function(cam) {
+    if (!cam.lat || !cam.lon) return;
+    var imgUrl = cam.props && cam.props.imageUrl;
+    var popup = '<div style="font-size:12px;min-width:180px">'
+      + '<div style="font-weight:700;margin-bottom:4px">'+cam.title+'</div>'
+      + (imgUrl ? '<img src="'+imgUrl+'" style="width:100%;max-width:240px;border-radius:4px;margin-bottom:4px" onerror="this.style.display=\'none\'">' : '')
+      + '<div style="color:#888;font-size:10px">'+cam.source+'</div>'
+      + '</div>';
+    L.marker([cam.lat, cam.lon], { icon: camIcon }).bindPopup(popup, { maxWidth:260 }).addTo(cameraLayer);
+  });
+
+  map.addLayer(cameraLayer);
+  if (ftag) ftag.textContent = '📷' + (sources.length ? ' '+sources.length : '');
+  setStatus('📷 ' + sources.length + ' cameras loaded');
+}
+
+// ── Truck Restrictions ────────────────────────────────────────────────────────
+async function fetchRestrictions() {
+  var ftag = document.getElementById('ftag-restrict');
+  if (ftag) ftag.textContent = '⛔ …';
+  restrictLayer.clearLayers();
+
+  var bounds = map.getBounds();
+  var pts = await fetchPOILayerInBounds('restrict', bounds);
+
+  // pts here are raw — we need to re-fetch with tags for restrictions
+  // Use Overpass directly to get way tags
+  var bbox = bounds.getSouth()+','+bounds.getWest()+','+bounds.getNorth()+','+bounds.getEast();
+  var query = '[out:json][timeout:20];(way["maxheight"]('+bbox+');way["maxweight"]('+bbox+');way["hgv"="no"]('+bbox+'););out center tags;';
+
+  var data = { elements: [] };
+  var endpoints = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+  if (serverAvailable) {
+    try {
+      var r = await fetch(API_BASE+'/api/layers?types=restrict&bbox='+bbox, { signal:AbortSignal.timeout(20000) });
+      var d = await r.json();
+      var items = (d.layers && d.layers.restrict) || [];
+      renderRestrictionItems(items);
+      if (ftag) ftag.textContent = '⛔' + (items.length ? ' '+items.length : '');
+      return;
+    } catch(e) {}
+  }
+
+  for (var i=0; i<endpoints.length; i++) {
+    try {
+      var r = await fetch(endpoints[i], { method:'POST', body:'data='+encodeURIComponent(query), signal:AbortSignal.timeout(20000) });
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      data = await r.json();
+      break;
+    } catch(e) { console.warn('Restrict overpass:', e.message); }
+  }
+
+  var items = (data.elements||[]).map(function(el){
+    var lat = el.lat||(el.center&&el.center.lat);
+    var lon = el.lon||(el.center&&el.center.lon);
+    if (!lat||!lon) return null;
+    var tags = el.tags||{};
+    var lines = [];
+    if (tags.maxheight) lines.push('Max height: '+tags.maxheight+'m');
+    if (tags.maxweight) lines.push('Max weight: '+tags.maxweight+'t');
+    if (tags.maxwidth)  lines.push('Max width: '+tags.maxwidth+'m');
+    if (tags.hgv==='no') lines.push('No HGV/trucks');
+    if (!lines.length) return null;
+    return { lat, lon, title: lines[0], props:{ lines } };
+  }).filter(Boolean);
+
+  renderRestrictionItems(items);
+  if (ftag) ftag.textContent = '⛔' + (items.length ? ' '+items.length : '');
+}
+
+function renderRestrictionItems(items) {
+  restrictLayer.clearLayers();
+  items.forEach(function(item) {
+    var lines = (item.props && item.props.lines) || [item.title];
+    var icon = L.divIcon({
+      html: '<div style="background:#C0392B;color:#fff;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:700;white-space:nowrap;border:1px solid rgba(255,255,255,.4)">⛔ '+lines[0]+'</div>',
+      className:'', iconSize: null
+    });
+    var popup = '<div style="font-size:12px"><b>Truck Restriction</b><br>'+lines.join('<br>')+'</div>';
+    L.marker([item.lat, item.lon], { icon }).bindPopup(popup).addTo(restrictLayer);
+  });
+  map.addLayer(restrictLayer);
+  setStatus('⛔ ' + items.length + ' truck restrictions shown');
+}
+
+// ── Weather Radar (RainViewer — free, no API key) ─────────────────────────────
+var _radarFrames = [];
+var _radarIdx = 0;
+var _radarTimer = null;
+
+async function startRadar() {
+  var ftag = document.getElementById('ftag-radar');
+  if (ftag) ftag.textContent = '🌧 …';
+  try {
+    var r = await fetch('https://api.rainviewer.com/public/weather-maps.json', { signal:AbortSignal.timeout(8000) });
+    var d = await r.json();
+    _radarFrames = (d.radar && d.radar.past) || [];
+    if (!_radarFrames.length) { if(ftag) ftag.textContent='🌧'; return; }
+
+    // Remove old radar layer
+    if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; }
+
+    function showFrame(idx) {
+      if (radarLayer) map.removeLayer(radarLayer);
+      var ts = _radarFrames[idx].time;
+      radarLayer = L.tileLayer(
+        'https://tilecache.rainviewer.com/v2/radar/'+ts+'/512/{z}/{x}/{y}/2/1_1.png',
+        { opacity: 0.5, tileSize:512, zoomOffset:-1, attribution:'RainViewer' }
+      ).addTo(map);
+    }
+
+    _radarIdx = _radarFrames.length - 1;
+    showFrame(_radarIdx);
+
+    // Animate through the last 6 frames
+    clearInterval(_radarTimer);
+    _radarTimer = setInterval(function() {
+      if (!poiVisible.radar) { clearInterval(_radarTimer); return; }
+      _radarIdx = (_radarIdx + 1) % _radarFrames.length;
+      showFrame(_radarIdx);
+    }, 800);
+
+    if (ftag) ftag.textContent = '🌧 live';
+    setStatus('🌧 Animated radar — '+_radarFrames.length+' frames');
+  } catch(e) {
+    console.warn('Radar:', e.message);
+    if (ftag) ftag.textContent = '🌧 ✕';
+    setStatus('🌧 Radar unavailable');
+  }
+}
+
+function stopRadar() {
+  clearInterval(_radarTimer);
+  if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; }
+  var ftag = document.getElementById('ftag-radar');
+  if (ftag) ftag.textContent = '🌧';
+}
+
+// ── Feedback ──────────────────────────────────────────────────────────────────
+function openFeedback() {
+  document.getElementById('feedback-overlay').classList.remove('hidden');
+}
+function closeFeedback() {
+  document.getElementById('feedback-overlay').classList.add('hidden');
+}
+function submitFeedback() {
+  const msg = document.getElementById('fb-msg')?.value?.trim();
+  if (!msg) { alert('Please enter a message'); return; }
+  // No backend — just acknowledge
+  closeFeedback();
+  setStatus('💬 Thanks for your feedback!');
+  if (document.getElementById('fb-msg')) document.getElementById('fb-msg').value = '';
+}
+
+// ── Route share ───────────────────────────────────────────────────────────────
+function openShare() {
+  document.getElementById('share-sec').style.display = 'block';
+  const url = buildShareURL();
+  const inp = document.getElementById('share-url-input');
+  if (inp) inp.value = url;
+}
+function buildShareURL() {
+  const base = location.href.split('?')[0];
+  const params = new URLSearchParams();
+  if (originCoord) params.set('o', originCoord.join(','));
+  if (destCoord)   params.set('d', destCoord.join(','));
+  const oText = document.getElementById('inp-origin')?.value;
+  const dText = document.getElementById('inp-dest')?.value;
+  if (oText) params.set('ot', oText);
+  if (dText) params.set('dt', dText);
+  return `${base}?${params.toString()}`;
+}
+function copyShareLink() {
+  const inp = document.getElementById('share-url-input');
+  if (!inp) return;
+  inp.select();
+  try {
+    navigator.clipboard.writeText(inp.value);
+    const btn = document.getElementById('share-copy-btn');
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 2000); }
+  } catch(e) {
+    document.execCommand('copy');
+  }
+}
+function loadFromURLParams() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('o')) {
+    const parts = p.get('o').split(',');
+    if (parts.length === 2) {
+      originCoord = [+parts[0], +parts[1]];
+      placePin(originCoord, 'origin');
+    }
+  }
+  if (p.get('d')) {
+    const parts = p.get('d').split(',');
+    if (parts.length === 2) {
+      destCoord = [+parts[0], +parts[1]];
+      placePin(destCoord, 'dest');
+    }
+  }
+  if (p.get('ot')) { const el = document.getElementById('inp-origin'); if (el) el.value = p.get('ot'); }
+  if (p.get('dt')) { const el = document.getElementById('inp-dest');   if (el) el.value = p.get('dt'); }
+  checkReady();
+  if (originCoord && destCoord) setTimeout(planRoute, 500);
+}
+
+// ── Temperature helpers ───────────────────────────────────────────────────────
+function toC(f)      { return Math.round((f - 32) * 5/9); }
+function fmtTemp(f)  { return tempUnit === 'C' ? `${toC(f)}°C` : `${f}°F`; }
+function fmtWind(mph){ return units === 'metric' ? `${Math.round(mph * MI_TO_KM)} km/h` : `${mph} mph`; }
+
+function setTempUnit(u) {
+  tempUnit = u;
+  document.getElementById('tu-f').classList.toggle('on', u === 'F');
+  document.getElementById('tu-c').classList.toggle('on', u === 'C');
+  if (_lastWxResults) renderWeather(_lastWxResults);
+}
+
+// ── Status helper ─────────────────────────────────────────────────────────────
+function setStatus(msg) {
+  const el = document.getElementById('statusbar');
+  if (el) el.textContent = msg;
+}
+
+// ── Disclaimer ────────────────────────────────────────────────────────────────
+function checkDisclaimer() {
+  const modal = document.getElementById('disclaimer-overlay');
+  if (!modal) return;
+  try { if (localStorage.getItem('rigrout_disclaimer')) modal.classList.add('hidden'); } catch(e) {}
+}
+function acceptDisclaimer() {
+  // Hide FIRST — never let localStorage errors block entry
+  const modal = document.getElementById('disclaimer-overlay');
+  if (modal) modal.classList.add('hidden');
+  try { localStorage.setItem('rigrout_disclaimer', '1'); } catch(e) {}
+}
+
+// ── GPS / Current Location ────────────────────────────────────────────────────
+function useMyLocation() {
+  if (!navigator.geolocation) { setStatus('GPS not supported in this browser'); return; }
+  setStatus('📍 Getting your location…');
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    originCoord = [lat, lng];
+    placePin([lat, lng], 'origin');
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      const d = await r.json();
+      const label = d.display_name
+        ? d.display_name.split(',').slice(0, 2).join(', ')
+        : `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      document.getElementById('inp-origin').value = label;
+    } catch(e) {
+      document.getElementById('inp-origin').value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    }
+    checkReady();
+    setStatus('📍 Current location set as origin');
+  }, err => {
+    const msgs = { 1:'Location permission denied', 2:'Position unavailable', 3:'Location request timed out' };
+    setStatus('📍 ' + (msgs[err.code] || 'Could not get location'));
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+// ── Weather ───────────────────────────────────────────────────────────────────
+async function fetchWeatherPoint(lat, lon) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&current_weather=true&hourly=apparent_temperature,precipitation_probability,weathercode` +
+    `&wind_speed_unit=mph&temperature_unit=fahrenheit&forecast_days=1&timezone=auto`;
+  const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!r.ok) throw new Error(`Weather HTTP ${r.status}`);
+  const d = await r.json();
+  const cw = d.current_weather;
+  const hr = d.hourly;
+  const nowIdx = hr.time.findIndex(t => t >= cw.time.slice(0, 13)) || 0;
+  return {
+    tempF:     Math.round(cw.temperature),
+    feelsF:    Math.round(hr.apparent_temperature[nowIdx] ?? cw.temperature),
+    windMph:   Math.round(cw.windspeed),
+    wmoCode:   cw.weathercode,
+    precipPct: hr.precipitation_probability[nowIdx] ?? 0,
+    lat, lon
+  };
+}
+
+const WMO_DESC = {
+  0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',
+  45:'Fog',48:'Icy fog',51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',
+  61:'Light rain',63:'Rain',65:'Heavy rain',
+  71:'Light snow',73:'Snow',75:'Heavy snow',77:'Snow grains',
+  80:'Showers',81:'Heavy showers',82:'Violent showers',
+  85:'Snow showers',86:'Heavy snow showers',
+  95:'Thunderstorm',96:'Thunderstorm+hail',99:'Thunderstorm+heavy hail'
+};
+const WMO_ICON = {
+  0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',
+  51:'🌦',53:'🌧',55:'🌧',61:'🌦',63:'🌧',65:'🌧',
+  71:'🌨',73:'❄️',75:'❄️',77:'🌨',80:'🌦',81:'🌧',82:'⛈',
+  85:'🌨',86:'❄️',95:'⛈',96:'⛈',99:'⛈'
+};
+
+function renderWeather(results) {
+  _lastWxResults = results;
+  const strip = document.getElementById('wx-strip');
+  const pList = document.getElementById('wx-panel-list');
+  const pSec  = document.getElementById('wx-panel-sec');
+  if (!results || !results.length) {
+    const msg = '<div style="color:var(--dim);font-size:10px;padding:4px 0">Plan a route to fetch live weather.</div>';
+    if (strip) strip.innerHTML = msg;
+    if (pList) pList.innerHTML = msg;
+    if (pSec)  pSec.style.display = 'none';
+    return;
+  }
+  const html = results.map(function(pt) {
+    const icon = WMO_ICON[pt.wmoCode] || '🌡';
+    const desc = WMO_DESC[pt.wmoCode] || 'Code ' + pt.wmoCode;
+    return '<div style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:5px;font-size:10px">' +
+      '<div style="display:flex;align-items:center;gap:6px">' +
+        '<span style="font-size:18px">' + icon + '</span>' +
+        '<div>' +
+          '<div style="color:var(--text);font-weight:600">' + fmtTemp(pt.tempF) + ' <span style="color:var(--dim);font-weight:400">feels ' + fmtTemp(pt.feelsF) + '</span></div>' +
+          '<div style="color:var(--dim)">' + desc + ' · 💨 ' + fmtWind(pt.windMph) + ' · 🌧 ' + pt.precipPct + '%</div>' +
+          '<div style="color:var(--dim);font-size:9px">' + pt.lat.toFixed(3) + ', ' + pt.lon.toFixed(3) + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  if (strip) strip.innerHTML = html;
+  if (pList) pList.innerHTML = html;
+  if (pSec)  pSec.style.display = 'block';
+  // ── Weather on map ──────────────────────────────────────────────────────
+  weatherMapLayer.clearLayers();
+  results.forEach(function(pt) {
+    var ico = WMO_ICON[pt.wmoCode] || '🌡';
+    var lbl = ico + ' ' + fmtTemp(pt.tempF);
+    var el = L.divIcon({
+      className: '',
+      html: '<div style="background:rgba(14,26,23,.92);border:1px solid #3D9EC5;border-radius:8px;padding:5px 10px;font-size:14px;font-weight:700;white-space:nowrap;color:#E4ECF0;box-shadow:0 2px 8px rgba(0,0,0,.5)">' + lbl + '</div>',
+      iconSize: [100, 34], iconAnchor: [50, 17], popupAnchor: [0, -20]
+    });
+    var details = ico + ' ' + (WMO_DESC[pt.wmoCode]||'') + '<br>' +
+      fmtTemp(pt.tempF) + ' feels ' + fmtTemp(pt.feelsF) + '<br>' +
+      '💨 ' + fmtWind(pt.windMph) + ' · 🌧 ' + pt.precipPct + '%';
+    L.marker([pt.lat, pt.lon], { icon: el }).bindPopup('<div style="font-size:13px">' + details + '</div>').addTo(weatherMapLayer);
+  });
+}
+
+async function fetchWeather() {
+  setStatus('⛅ Fetching weather…');
+  var pts = [];
+  if (originCoord) pts.push({ lat: originCoord[0], lon: originCoord[1] });
+  if (destCoord)   pts.push({ lat: destCoord[0],   lon: destCoord[1] });
+  if (!pts.length) { setStatus('Set origin/destination first'); return; }
+  try {
+    var results = await Promise.all(pts.map(function(p) { return fetchWeatherPoint(p.lat, p.lon); }));
+    renderWeather(results);
+    setStatus('⛅ Weather updated');
+  } catch(e) {
+    setStatus('⛅ Weather fetch failed');
+    console.warn('Weather:', e);
+  }
+}
+
+function fetchPOIsAlongRoute(bounds) {
+  // Auto-enable stops/rest/border when a route is planned
+  ['stops','rest','border','cardlock'].forEach(function(t) {
+    poiVisible[t] = true;
+    var tag = document.getElementById('ftag-'+t);
+    if (tag) tag.classList.add('on');
+  });
+  // ~40km buffer each side
+  var buf = 0.4;
+  var exp = L.latLngBounds(
+    [bounds.getSouth()-buf, bounds.getWest()-buf],
+    [bounds.getNorth()+buf, bounds.getEast()+buf]
+  );
+  // Always fetch stops + rest along route; also fetch others if user toggled them on
+  var alwaysFetch = ['stops','rest','border'];
+  var types = Array.from(new Set(alwaysFetch.concat(
+    ['cardlock','weigh','repair','ev'].filter(function(t){ return poiVisible[t]; })
+  )));
+  types.forEach(function(type) {
+    delete poiCache[type];
+    fetchPOILayerInBounds(type, exp).then(function(pts){ renderPOILayer(type, pts); });
+  });
+}
+
+async function fetchPOILayerInBounds(type, bounds) {
+  var ftag = document.getElementById('ftag-' + type);
+  if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym + ' …';
+  var bbox = bounds.getSouth()+','+bounds.getWest()+','+bounds.getNorth()+','+bounds.getEast();
+
+  // ── Server first (bypasses all CORS + Overpass rate limits) ───────────────
+  if (serverAvailable) {
+    try {
+      var r = await fetch(API_BASE+'/api/layers?types='+type+'&bbox='+bbox, { signal:AbortSignal.timeout(30000) });
+      var d = await r.json();
+      var items = (d.layers && d.layers[type]) || [];
+      var pts = items.map(function(item){ return { lat:item.lat, lon:item.lon, name:item.title,
+        amen:(item.props&&item.props.amenities)||'', opening:(item.props&&item.props.opening_hours)||'' }; });
+      poiCache[type] = pts;
+      if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym + (pts.length?' '+pts.length:'');
+      return pts;
+    } catch(e) { console.warn('Server fetch failed for',type,e.message); }
+  }
+
+  // ── Fallback: direct Overpass (3 endpoints) ────────────────────────────────
+  var query = '[out:json][timeout:25];' + OVERPASS_QUERIES[type].replace(/BBOX/g, bbox) + 'out center;';
+  var endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter'
+  ];
+  for (var ei = 0; ei < endpoints.length; ei++) {
+    try {
+      var r = await fetch(endpoints[ei], { method:'POST', body:'data='+encodeURIComponent(query), signal:AbortSignal.timeout(25000) });
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      var d = await r.json();
+      var pts = (d.elements||[]).map(function(e) {
+        var lat = e.lat||(e.center&&e.center.lat);
+        var lon = e.lon||(e.center&&e.center.lon);
+        if (!lat||!lon) return null;
+        var tags = e.tags||{};
+        return { lat:lat, lon:lon, name:tags.name||tags.operator||tags.brand||typeLabel(type), amen:buildAmenString(tags,type), opening:tags.opening_hours||'' };
+      }).filter(Boolean);
+      poiCache[type] = pts;
+      if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym + (pts.length?' '+pts.length:'');
+      return pts;
+    } catch(e) { console.warn('Overpass endpoint',ei,e.message); }
+  }
+  if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym + ' ✕';
+  return poiCache[type]||[];
+}
+
+async function planRoute() {
+  if (!originCoord || !destCoord) { setStatus('Set origin and destination first'); return; }
+  setStatus('🗺 Planning route…');
+  routeLayer.clearLayers();
+  var panel = document.getElementById('panel');
+  if (panel) panel.classList.add('open');
+  var spinner = document.getElementById('spinner');
+  if (spinner) spinner.style.display = 'block';
+  try {
+    var activeVia = viaStops.filter(function(s) { return s.coord; });
+    var waypoints = [originCoord].concat(activeVia.map(function(s) { return s.coord; })).concat([destCoord]);
+    var waypointStr = waypoints.map(function(c) { return c[1] + ',' + c[0]; }).join(';');
+    var url = 'https://router.project-osrm.org/route/v1/driving/' + waypointStr +
+      '?overview=full&geometries=geojson&steps=true';
+    var r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error('OSRM HTTP ' + r.status);
+    var d = await r.json();
+    if (!d.routes || !d.routes[0]) throw new Error('No route found');
+    var route  = d.routes[0];
+    var distMi = (route.distance / 1609.34).toFixed(1);
+    var distKm = (route.distance / 1000).toFixed(1);
+    var hrs    = Math.floor(route.duration / 3600);
+    var mins   = Math.round((route.duration % 3600) / 60);
+    var distLabel = units === 'metric' ? distKm + ' km' : distMi + ' mi';
+
+    L.geoJSON(route.geometry, { style: { color:'#3DB87A', weight:5, opacity:0.85 } }).addTo(routeLayer);
+    map.fitBounds(L.geoJSON(route.geometry).getBounds(), { padding:[30,30] });
+    setStatus('✅ ' + distLabel + ' · ' + hrs + 'h ' + mins + 'm');
+
+    // Stats panel
+    var statsEl = document.getElementById('stats');
+    var activeVia = viaStops.filter(function(s) { return s.coord; });
+    var thirdStat = activeVia.length
+      ? '<div class="stat"><div class="sv">' + (activeVia.length + 2) + '</div><div class="sl">Waypoints</div></div>'
+      : '<div class="stat"><div class="sv">' + (loadStatus === 'loaded' ? '🔴' : '🟢') + '</div><div class="sl">' + loadStatus + '</div></div>';
+    if (statsEl) statsEl.innerHTML =
+      '<div class="stat"><div class="sv">' + distLabel + '</div><div class="sl">Distance</div></div>' +
+      '<div class="stat"><div class="sv">' + hrs + 'h ' + mins + 'm</div><div class="sl">Est. Time</div></div>' +
+      thirdStat;
+
+    // Risk audit — local quick-checks before server audit runs
+    var riskEl = document.getElementById('risk-list');
+    if (riskEl) {
+      var risks = [];
+      if (getHeightFt() > 13.5) risks.push({ cls:'warn', msg:'⚠️ Height ' + getHeightFt().toFixed(1) + 'ft may restrict certain overpasses. Check low-clearance alerts along route.' });
+      if (getWeightLbs() > 80000) risks.push({ cls:'danger', msg:'🛑 GVW ' + (getWeightLbs()/1000).toFixed(0) + 'k lbs exceeds standard 80,000 lb limit. Permit may be required.' });
+      if (loadStatus === 'loaded') risks.push({ cls:'info', msg:'ℹ️ Loaded configuration active. Weight distribution and braking distance increased.' });
+      risks.push({ cls:'ok', msg:'✅ Route calculated via OSRM. Server audit will apply truck-specific restrictions.' });
+      riskEl.innerHTML = risks.map(function(rk) {
+        return '<div class="risk ' + rk.cls + '"><div class="risk-msg">' + rk.msg + '</div></div>';
+      }).join('');
+      // Update badge
+      var critLocal = risks.filter(function(r){ return r.cls==='danger'||r.cls==='warn'; }).length;
+      var badge = document.getElementById('risk-count-badge');
+      if (badge) { badge.textContent = critLocal || ''; badge.style.display = critLocal ? '' : 'none'; }
+    }
+
+    // Turns in stops-list area — combine all legs
+    var stopsList = document.getElementById('stops-list');
+    if (stopsList) {
+      var allSteps = route.legs.reduce(function(acc, leg) { return acc.concat(leg.steps || []); }, []);
+      // Insert a waypoint divider row between legs when via stops are used
+      var activeViaLabels = viaStops.filter(function(s) { return s.coord; });
+      var legBoundaries = []; // step indices where a new leg begins
+      var stepsSoFar = 0;
+      route.legs.forEach(function(leg, li) {
+        if (li > 0) legBoundaries.push(stepsSoFar);
+        stepsSoFar += (leg.steps || []).length;
+      });
+      var stepsHtml = allSteps.map(function(s, i) {
+        var divider = '';
+        var boundaryIdx = legBoundaries.indexOf(i);
+        if (boundaryIdx !== -1) {
+          var viaLabel = activeViaLabels[boundaryIdx - 1] ? activeViaLabels[boundaryIdx - 1].text.split(',')[0] : ('Stop ' + boundaryIdx);
+          divider = '<div style="padding:5px 14px;background:rgba(44,125,160,.15);border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.6px">📍 Via: ' + viaLabel + '</div>';
+        }
+        var sd = units === 'metric'
+          ? (s.distance / 1000).toFixed(1) + ' km'
+          : (s.distance / 1609.34).toFixed(1) + ' mi';
+        var instr = (s.maneuver && s.maneuver.instruction) || s.name || '—';
+        return divider + '<div class="stop"><div class="stop-top">' +
+          '<span class="stop-name">' + (i+1) + '. ' + instr + '</span>' +
+          '<span class="stop-mi">' + sd + '</span>' +
+          '</div></div>';
+      }).join('');
+      stopsList.innerHTML = '<div class="stop-header-row"><div class="stop-htitle">Turn-by-Turn' +
+        (route.legs.length > 1 ? ' <span style="color:var(--dim);font-weight:400;font-size:9px">' + route.legs.length + ' legs</span>' : '') +
+        '</div></div>' + stepsHtml;
+    }
+
+    // Show share button
+    var shareHbtn = document.getElementById('share-hbtn');
+    if (shareHbtn) shareHbtn.style.display = '';
+
+    if (spinner) spinner.style.display = 'none';
+    fetchWeather();
+    // Fetch all active POI layers along the full route corridor
+    setStatus('✅ ' + distLabel + ' · ' + hrs + 'h ' + mins + 'm · Loading stops…');
+    fetchPOIsAlongRoute(L.geoJSON(route.geometry).getBounds()).then(function() {
+      setStatus('✅ ' + distLabel + ' · ' + hrs + 'h ' + mins + 'm');
+    });
+  } catch(e) {
+    if (spinner) spinner.style.display = 'none';
+    setStatus('🗺 Route failed: ' + e.message);
+    console.warn('Route:', e);
+  }
+}
+
+function loadFavorites() {
+  try { return JSON.parse(localStorage.getItem('rigrout_favorites') || '[]'); }
+  catch(e) { return []; }
+}
+function saveFavoritesStore(arr) {
+  localStorage.setItem('rigrout_favorites', JSON.stringify(arr));
+}
+function saveFavorite() {
+  var originText = (document.getElementById('inp-origin') || {}).value || '';
+  var destText   = (document.getElementById('inp-dest')   || {}).value || '';
+  var oT = originText.trim(), dT = destText.trim();
+  if (!oT && !dT) { setStatus('Enter at least one location to save'); return; }
+  var label = prompt('Name this favorite:', [oT, dT].filter(Boolean).join(' → ').slice(0,50));
+  if (!label) return;
+  var favs = loadFavorites();
+  if (favs.length >= 20) { setStatus('Maximum 20 favorites — delete one first'); return; }
+  favs.unshift({ id:Date.now(), label:label, originText:oT, destText:dT,
+    originCoord: originCoord ? [originCoord[0],originCoord[1]] : null,
+    destCoord:   destCoord   ? [destCoord[0],  destCoord[1]  ] : null });
+  saveFavoritesStore(favs);
+  renderFavorites();
+  setStatus('⭐ Saved: ' + label);
+}
+function deleteFavorite(id) {
+  saveFavoritesStore(loadFavorites().filter(function(f){ return f.id !== id; }));
+  renderFavorites();
+}
+function loadFavorite(id) {
+  var fav = loadFavorites().find(function(f){ return f.id === id; });
+  if (!fav) return;
+  if (fav.originText) document.getElementById('inp-origin').value = fav.originText;
+  if (fav.destText)   document.getElementById('inp-dest').value   = fav.destText;
+  if (fav.originCoord) { originCoord = fav.originCoord; placePin(originCoord,'origin'); }
+  if (fav.destCoord)   { destCoord   = fav.destCoord;   placePin(destCoord,'dest'); }
+  checkReady();
+  setStatus('⭐ Loaded: ' + fav.label);
+}
+function renderFavorites() {
+  var el = document.getElementById('fav-list');
+  if (!el) return;
+  var favs = loadFavorites();
+  if (!favs.length) {
+    el.innerHTML = '<div style="color:var(--dim);font-size:10px;padding:4px 0">No saved favorites yet.</div>';
+    return;
+  }
+  el.innerHTML = favs.map(function(f) {
+    return '<div style="display:flex;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid var(--border)">' +
+      '<button onclick="loadFavorite(' + f.id + ')" style="flex:1;text-align:left;background:none;border:none;color:var(--text);font-size:10px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + f.label.replace(/"/g,'&quot;') + '">⭐ ' + f.label + '</button>' +
+      '<button onclick="deleteFavorite(' + f.id + ')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px;padding:0 3px" title="Remove">✕</button>' +
+      '</div>';
+  }).join('');
+}
+
+// ── Live Road Ban Feeds ────────────────────────────────────────────────────────
+const CORS_PROXIES = [
+  function(u){ return 'https://corsproxy.io/?' + encodeURIComponent(u); },
+  function(u){ return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
+  function(u){ return 'https://thingproxy.freeboard.io/fetch/' + u; }
+];
+const BAN_FEEDS = [
+  { key:'bc', name:'BC DriveBC',       region:'BC', color:'#E05252', direct:true,
+    url:'https://api.open511.gov.bc.ca/events?format=json', parser:'open511' },
+  { key:'ab', name:'Alberta 511',      region:'AB', color:'#F5A623', direct:false,
+    url:'https://511.alberta.ca/api/v2/get/event?format=json', parser:'ibi511' },
+  { key:'sk', name:'Saskatchewan 511', region:'SK', color:'#F5A623', direct:false,
+    url:'https://511sk.ca/api/v2/get/event?format=json', parser:'ibi511' },
+  { key:'mb', name:'Manitoba 511',     region:'MB', color:'#F5A623', direct:false,
+    url:'https://511mb.ca/api/v2/get/event?format=json', parser:'ibi511' },
+  { key:'on', name:'Ontario 511',      region:'ON', color:'#F5A623', direct:false,
+    url:'https://511on.ca/api/v2/get/event?format=json', parser:'ibi511' },
+  { key:'id', name:'Idaho 511',        region:'ID', color:'#2C7DA0', direct:false,
+    url:'https://511.idaho.gov/api/v2/get/event?format=json', parser:'ibi511' },
+  { key:'mt', name:'Montana DOT',      region:'MT', color:'#2C7DA0', direct:false,
+    url:'https://511.mt.gov/api/v2/get/event?format=json', parser:'ibi511' },
+  { key:'nd', name:'North Dakota 511', region:'ND', color:'#2C7DA0', direct:false,
+    url:'https://www.511nd.gov/api/v2/get/event?format=json', parser:'ibi511' },
+  { key:'mn', name:'Minnesota 511',    region:'MN', color:'#2C7DA0', direct:false,
+    url:'https://511mn.org/api/v2/get/event?format=json', parser:'ibi511' },
+  { key:'wi', name:'Wisconsin 511',    region:'WI', color:'#2C7DA0', direct:false,
+    url:'https://511wi.gov/api/v2/get/event?format=json', parser:'ibi511' },
+  { key:'wa', name:'Washington DOT',   region:'WA', color:'#2C7DA0', direct:false,
+    url:'https://511wa.gov/api/v2/get/event?format=json', parser:'ibi511' }
+];
+const BAN_KEYWORDS = ['weight restriction','load restriction','spring ban','frost law',
+  'seasonal','overweight','weight limit','road ban','axle weight','weight reduced',
+  'load limit','frozen roadway','spring thaw','spring weight','posting'];
+const BAN_TYPES_SET = new Set(['RESTRICTION','ROAD_CONDITION','CLOSURE','WEIGHT_RESTRICTION']);
+
+function isBanEvent(headline, desc, type) {
+  var text = ((headline||'') + ' ' + (desc||'') + ' ' + (type||'')).toLowerCase();
+  return BAN_KEYWORDS.some(function(kw){ return text.indexOf(kw) !== -1; }) ||
+         BAN_TYPES_SET.has((type||'').toUpperCase());
+}
+
+async function fetchFeedSafe(feed) {
+  async function tryUrl(url, wrapped) {
+    var r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var text = await r.text();
+    if (!text || !text.trim()) throw new Error('Empty');
+    // allorigins /get wraps in {contents:'...'}
+    if (wrapped) { var w = JSON.parse(text); return JSON.parse(w.contents || w); }
+    var t = text.trim();
+    if (t[0] === '<') throw new Error('XML response — not JSON');
+    return JSON.parse(t);
+  }
+  // Try direct first for all feeds
+  try { return await tryUrl(feed.url, false); } catch(e){}
+  // Proxy chain
+  var proxies = [
+    function(u){ return { url:'https://api.allorigins.win/get?url='+encodeURIComponent(u), wrapped:true }; },
+    function(u){ return { url:'https://corsproxy.io/?'+encodeURIComponent(u), wrapped:false }; },
+    function(u){ return { url:'https://api.allorigins.win/raw?url='+encodeURIComponent(u), wrapped:false }; },
+    function(u){ return { url:'https://thingproxy.freeboard.io/fetch/'+u, wrapped:false }; }
+  ];
+  for (var i = 0; i < proxies.length; i++) {
+    try { var p = proxies[i](feed.url); return await tryUrl(p.url, p.wrapped); } catch(e){}
+  }
+  throw new Error('All proxies failed');
+}
+
+function parseFeedEvents(feed, data) {
+  if (feed.parser === 'open511') {
+    return (data.events || []).map(function(e) {
+      return { headline: e.headline||e.event_type||'', desc: e.description||'',
+        type: e.event_type||'',
+        road: (e.roads&&e.roads[0]&&e.roads[0].name)||'',
+        area: (e.areas&&e.areas[0]&&e.areas[0].name)||'',
+        lat:  (e.geography&&e.geography.coordinates&&e.geography.coordinates[1])||null,
+        lon:  (e.geography&&e.geography.coordinates&&e.geography.coordinates[0])||null };
+    });
+  }
+  return (data.Events||data.events||data||[]).map(function(e) {
+    return { headline: e.EventType||e.Headline||e.headline||'',
+      desc: e.Description||e.description||'',
+      type: e.EventType||e.event_type||'',
+      road: e.RoadwayName||e.road||'',
+      area: e.County||e.City||e.area||'',
+      lat:  e.Latitude!=null?e.Latitude:(e.lat!=null?e.lat:null),
+      lon:  e.Longitude!=null?e.Longitude:(e.lon!=null?e.lon:null) };
+  });
+}
+
+async function fetchRoadBans() {
+  var sourcesEl = document.getElementById('ban-sources');
+  var listEl    = document.getElementById('ban-feed-list');
+  var totalEl   = document.getElementById('ban-total-badge');
+
+  // ── If server is running, use it (no CORS, much more reliable) ────────────
+  if (serverAvailable) {
+    try {
+      if (sourcesEl) sourcesEl.innerHTML = '<div style="font-size:11px;color:var(--dim)">⏳ Loading bans via server…</div>';
+      var r = await fetch(API_BASE+'/api/layers?types=bans', { signal:AbortSignal.timeout(35000) });
+      var d = await r.json();
+      var allBans = (d.layers&&d.layers.bans)||[];
+      var feedStatus = (d.layers&&d.layers._banFeedStatus)||{};
+      // Render source status from server response
+      if (sourcesEl) {
+        var canada = ['bc','ab','sk','mb','on'];
+        var us     = ['id','mt','nd','mn','wi','wa'];
+        function sRow(key) {
+          var fs = feedStatus[key]||{};
+          var ct = fs.status==='ok' ? (fs.bans&&fs.bans.length ? fs.bans.length+' ⚠':'✓') : (fs.status==='error'?'✕':'?');
+          var cl = fs.status==='ok' ? (fs.bans&&fs.bans.length?'active':'ok') : 'err';
+          var nm = fs.name||key.toUpperCase();
+          var dot = {bc:'#E05252',ab:'#F5A623',sk:'#F5A623',mb:'#F5A623',on:'#F5A623',id:'#2C7DA0',mt:'#2C7DA0',nd:'#2C7DA0',mn:'#2C7DA0',wi:'#2C7DA0',wa:'#2C7DA0'}[key]||'#888';
+          return '<div class="ban-src-row" title="'+(fs.err||nm)+'">'+'<div class="ban-src-dot" style="background:'+dot+'"></div><span class="ban-src-name">'+nm+'</span><span class="ban-src-count '+cl+'">'+ct+'</span></div>';
+        }
+        sourcesEl.innerHTML =
+          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.7px">Canada</div>'+
+          '<div class="ban-src-grid">'+canada.map(sRow).join('')+'</div>'+
+          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">United States</div>'+
+          '<div class="ban-src-grid">'+us.map(sRow).join('')+'</div>';
+      }
+      if (totalEl) { if (allBans.length) { totalEl.textContent=allBans.length+' active'; totalEl.style.display=''; } else totalEl.style.display='none'; }
+      // Convert to renderBans format
+      var banCards = allBans.map(function(b){ return { headline:b.title, desc:(b.props&&b.props.description)||'', road:(b.props&&b.props.road)||'', area:(b.props&&b.props.area)||'', feedName:b.source, feedColor:b.color, feedUrl:'', lat:b.lat, lon:b.lon }; });
+      renderBans(banCards);
+      poiLayers.bans.clearLayers();
+      allBans.forEach(function(b){ if(b.lat&&b.lon){ L.circleMarker([b.lat,b.lon],{radius:8,color:b.color,fillColor:b.color,fillOpacity:0.75,weight:2}).bindPopup('<strong>'+b.title+'</strong><br>'+(b.props&&b.props.road||'')+' '+(b.props&&b.props.area||'')+'<br><em>'+b.source+'</em>').addTo(poiLayers.bans); } });
+      return;
+    } catch(e) { console.warn('Server ban fetch failed:', e.message); }
+  }
+  // Fall through to direct API fetching below…
+
+  // ── Render all sources immediately with loading state ─────────────────────
+  var srcState = {}; // key → { feed, bans, status }
+  BAN_FEEDS.forEach(function(feed) { srcState[feed.key] = { feed:feed, bans:[], status:'loading' }; });
+
+  var REGION_FLAG = {
+    BC:'🇨🇦',AB:'🇨🇦',SK:'🇨🇦',MB:'🇨🇦',ON:'🇨🇦',
+    ID:'🇺🇸',MT:'🇺🇸',ND:'🇺🇸',MN:'🇺🇸',WI:'🇺🇸',WA:'🇺🇸',
+    OR:'🇺🇸',SD:'🇺🇸',WY:'🇺🇸',CO:'🇺🇸',UT:'🇺🇸',IA:'🇺🇸',NE:'🇺🇸',
+    NY:'🇺🇸',PA:'🇺🇸',OH:'🇺🇸',MI:'🇺🇸',TX:'🇺🇸',IL:'🇺🇸'
+  };
+
+  function renderSources() {
+    if (!sourcesEl) return;
+    var canada = BAN_FEEDS.filter(function(f){ return ['bc','ab','sk','mb','on'].indexOf(f.key)!==-1; });
+    var us     = BAN_FEEDS.filter(function(f){ return ['bc','ab','sk','mb','on'].indexOf(f.key)===-1; });
+
+    function srcRow(feed) {
+      var s = srcState[feed.key] || { status:'loading', bans:[] };
+      var badge, dotColor;
+      if (s.status==='loading') {
+        badge = '<span class="ban-status loading">LOADING</span>';
+        dotColor = 'var(--dim)';
+      } else if (s.status==='error') {
+        badge = '<span class="ban-status err">ERROR</span>';
+        dotColor = 'var(--red)';
+      } else if (s.bans.length) {
+        badge = '<span class="ban-count-badge">'+s.bans.length+' ban'+(s.bans.length!==1?'s':'')+'</span>';
+        dotColor = 'var(--red)';
+      } else {
+        badge = '<span class="ban-status live">LIVE ✓</span>';
+        dotColor = 'var(--green)';
+      }
+      var flag = REGION_FLAG[feed.region] || '🌐';
+      return '<div style="display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)">' +
+        '<div style="width:7px;height:7px;border-radius:50%;background:'+dotColor+';flex-shrink:0"></div>' +
+        '<span style="font-size:9px;width:14px;flex-shrink:0">'+flag+'</span>' +
+        '<span style="font-size:10px;font-weight:600;width:20px;color:var(--dim);flex-shrink:0">'+feed.region+'</span>' +
+        '<span style="font-size:10px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+feed.name+'</span>' +
+        badge +
+        '</div>';
+    }
+
+    var loadingCount = BAN_FEEDS.filter(function(f){ var s=srcState[f.key]; return !s||s.status==='loading'; }).length;
+    var liveCount    = BAN_FEEDS.filter(function(f){ var s=srcState[f.key]; return s&&s.status==='ok'; }).length;
+    var errCount     = BAN_FEEDS.filter(function(f){ var s=srcState[f.key]; return s&&s.status==='error'; }).length;
+
+    sourcesEl.innerHTML =
+      '<div style="display:flex;gap:8px;font-size:10px;margin-bottom:8px;flex-wrap:wrap">' +
+        '<span style="color:var(--green)">● '+liveCount+' live</span>' +
+        (loadingCount ? '<span style="color:var(--dim)">⏳ '+loadingCount+' loading</span>' : '') +
+        (errCount ? '<span style="color:var(--red)">✕ '+errCount+' error</span>' : '') +
+        '<span style="color:var(--dim);margin-left:auto">'+BAN_FEEDS.length+' feeds</span>' +
+      '</div>' +
+      '<div style="font-size:9px;font-weight:700;color:var(--dim);margin-bottom:3px;text-transform:uppercase;letter-spacing:.7px">🇨🇦 Canada</div>' +
+      canada.map(srcRow).join('') +
+      '<div style="font-size:9px;font-weight:700;color:var(--dim);margin:6px 0 3px;text-transform:uppercase;letter-spacing:.7px">🇺🇸 United States</div>' +
+      us.map(srcRow).join('');
+  }
+
+  renderSources(); // show loading state immediately
+  if (listEl) listEl.innerHTML = '';
+
+  // ── Fetch each feed, updating UI as results arrive ────────────────────────
+  var allBans = [];
+  poiLayers.bans.clearLayers();
+
+  await Promise.allSettled(BAN_FEEDS.map(async function(feed) {
+    try {
+      var data = await fetchFeedSafe(feed);
+      var evts = parseFeedEvents(feed, data);
+      var bans = evts.filter(function(e){ return isBanEvent(e.headline,e.desc,e.type); });
+      srcState[feed.key] = { feed:feed, bans:bans, status:'ok' };
+      bans.forEach(function(b){ allBans.push(Object.assign({},b,{feedName:feed.name,feedColor:feed.color,feedUrl:feed.url})); });
+    } catch(e) {
+      srcState[feed.key] = { feed:feed, bans:[], status:'error' };
+    }
+    renderSources(); // live update as each feed finishes
+  }));
+
+  // ── Final: render ban cards + map markers ─────────────────────────────────
+  if (totalEl) {
+    if (allBans.length) { totalEl.textContent = allBans.length + ' active'; totalEl.style.display = ''; }
+    else { totalEl.style.display = 'none'; }
+  }
+  renderBans(allBans);
+
+  allBans.forEach(function(b) {
+    if (b.lat && b.lon) {
+      L.circleMarker([b.lat,b.lon],{radius:8,color:b.feedColor,fillColor:b.feedColor,fillOpacity:0.75,weight:2})
+       .bindPopup('<strong>'+(b.headline||b.type)+'</strong><br>'+(b.road||'')+' '+(b.area||'')+'<br><em>'+b.feedName+'</em>')
+       .addTo(poiLayers.bans);
+    }
+  });
+}
+
+function renderBans(bans) {
+  var el = document.getElementById('ban-feed-list');
+  if (!el) return;
+  if (!bans.length) {
+    el.innerHTML = '<div style="color:var(--dim);font-size:11px;padding:6px 0">No active restrictions found across all feeds.</div>';
+    return;
+  }
+  // Group by feed source
+  var byFeed = {};
+  bans.forEach(function(b) {
+    if (!byFeed[b.feedName]) byFeed[b.feedName] = { color:b.feedColor, url:b.feedUrl||'', items:[] };
+    byFeed[b.feedName].items.push(b);
+  });
+  el.innerHTML = Object.keys(byFeed).map(function(feedName) {
+    var group = byFeed[feedName];
+    var cards = group.items.map(function(b) {
+      return '<div style="padding:5px 8px;margin-bottom:3px;background:var(--surf2);border-radius:4px;font-size:11px">' +
+        '<div style="font-weight:700;color:var(--text)">'+(b.headline||b.type)+'</div>' +
+        (b.road?'<div style="color:var(--dim);font-size:10px;margin-top:1px">📍 '+b.road+(b.area?', '+b.area:'')+'</div>':'') +
+        (b.desc?'<div style="color:var(--dim);font-size:10px;margin-top:2px">'+b.desc.slice(0,140)+(b.desc.length>140?'…':'')+'</div>':'') +
+        '</div>';
+    }).join('');
+    return '<div style="border-left:3px solid '+group.color+';padding:0 0 4px 8px;margin-bottom:8px">' +
+      '<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:5px">' +
+        '<div style="width:8px;height:8px;border-radius:50%;background:'+group.color+';flex-shrink:0"></div>' +
+        feedName +
+        '<span style="color:var(--dim);font-weight:400;font-size:10px">('+group.items.length+')</span>' +
+      '</div>' +
+      cards +
+    '</div>';
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PHASE 3 — 511-style layers, road conditions, DMS signs, trucker mode
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Layers panel ─────────────────────────────────────────────────────────────
+function toggleLayersPanel() {
+  var p = document.getElementById('layers-panel');
+  var b = document.getElementById('layers-btn');
+  if (!p) return;
+  var hidden = p.classList.toggle('hidden');
+  if (b) b.classList.toggle('open', !hidden);
+}
+
+function clearAllLayers() {
+  var toOff = ['closures','incidents','roadwork','signs','cameras','radar','restrict',
+    'stops','cardlock','rest','weigh','repair','border','ev','bans','conditions'];
+  toOff.forEach(function(t) {
+    var cb = document.getElementById('lyr-'+t);
+    if (cb) cb.checked = false;
+    if (t==='conditions') { toggleConditions(false); return; }
+    if (['closures','incidents','roadwork','signs'].includes(t)) { toggleEventLayer(t,false); return; }
+    togglePOIPanel(t, false);
+  });
+  setStatus('All layers cleared');
+}
+
+// Unified toggle called from the layers panel checkboxes
+function togglePOIPanel(type, on) {
+  var ftag = document.getElementById('ftag-'+type);
+  if (ftag) { ftag.classList.toggle('on', on); }
+  poiVisible[type] = on;
+  var cb = document.getElementById('lyr-'+type);
+  if (cb) cb.checked = on;
+
+  if (type==='bans')      { on ? map.addLayer(poiLayers.bans) : map.removeLayer(poiLayers.bans); return; }
+  if (type==='incidents') { on ? map.addLayer(incidentLayer)  : map.removeLayer(incidentLayer);  return; }
+  if (type==='custom')    { on ? map.addLayer(customLayer)    : map.removeLayer(customLayer);    return; }
+  if (type==='cameras')   { if (on) { map.addLayer(cameraLayer); if (!cameraLayer.getLayers().length) fetchCameras(); } else map.removeLayer(cameraLayer); return; }
+  if (type==='restrict')  { if (on) { map.addLayer(restrictLayer); if (!restrictLayer.getLayers().length) fetchRestrictions(); } else map.removeLayer(restrictLayer); return; }
+  if (type==='radar')     { on ? startRadar() : stopRadar(); return; }
+
+  var layer = poiLayers[type];
+  if (!layer) return;
+  if (on) {
+    if (poiCache[type] && poiCache[type].length) { renderPOILayer(type, poiCache[type]); }
+    else { fetchPOILayerInBounds(type, map.getBounds()).then(function(pts){ renderPOILayer(type, pts); }); }
+  } else { map.removeLayer(layer); layer.clearLayers(); }
+}
+
+// ── Event layers (closures / incidents / roadwork / signs) ───────────────────
+var eventLayers = {
+  closures:  L.layerGroup(),
+  incidents: null,  // reuse existing incidentLayer
+  roadwork:  L.layerGroup(),
+  signs:     L.layerGroup()
+};
+
+var EVENT_ICONS = {
+  closures: { icon:'🔴', color:'#E05252' },
+  roadwork: { icon:'🚧', color:'#F5A623' },
+  signs:    { icon:'🪧', color:'#2C7DA0' }
+};
+
+async function toggleEventLayer(type, on) {
+  var cb = document.getElementById('lyr-'+type);
+  if (cb) cb.checked = on;
+  if (type === 'incidents') { togglePOIPanel('incidents', on); return; }
+
+  var layer = eventLayers[type];
+  if (!layer) return;
+  if (!on) { map.removeLayer(layer); return; }
+
+  map.addLayer(layer);
+  if (layer.getLayers().length > 0) return; // already loaded
+
+  setStatus('Fetching ' + type + '…');
+  // Use server if available, else try direct feeds
+  var allEvents = [];
+  if (serverAvailable) {
+    try {
+      var r = await fetch(API_BASE+'/api/layers?types=bans', { signal:AbortSignal.timeout(20000) });
+      var d = await r.json();
+      allEvents = (d.layers && d.layers.bans) || [];
+    } catch(e) {}
+  } else {
+    // Collect from ban feeds already in memory
+    if (type === 'closures' || type === 'roadwork') {
+      // Re-use whatever is in the bans layer, filter by type
+    }
+  }
+
+  // Filter events by type
+  var typeFilter = {
+    closures: ['closure','closed','CLOSURE'],
+    roadwork: ['construction','roadwork','road work','ROAD_WORK','work zone'],
+    signs: []
+  };
+
+  var meta = EVENT_ICONS[type] || { icon:'📍', color:'#888' };
+
+  if (type === 'signs') {
+    await fetchDMSSigns();
+    return;
+  }
+
+  var keywords = typeFilter[type] || [];
+  var filtered = allEvents.filter(function(ev) {
+    var text = ((ev.title||'') + ' ' + ((ev.props&&ev.props.description)||'')).toLowerCase();
+    return keywords.some(function(k){ return text.includes(k.toLowerCase()); });
+  });
+
+  if (!filtered.length && allEvents.length) {
+    // Show all non-ban events for this type
+    filtered = allEvents.slice(0, 50);
+  }
+
+  filtered.forEach(function(ev) {
+    if (!ev.lat || !ev.lon) return;
+    var icon = L.divIcon({
+      html: '<div style="background:'+meta.color+';color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid rgba(255,255,255,.5);box-shadow:0 2px 6px rgba(0,0,0,.4)">'+meta.icon+'</div>',
+      className:'', iconSize:[22,22], iconAnchor:[11,11]
+    });
+    var popup = '<div style="font-size:12px;min-width:140px"><b>'+meta.icon+' '+(ev.title||type)+'</b>' +
+      ((ev.props&&ev.props.description)?'<div style="color:#777;font-size:10px;margin-top:3px">'+ev.props.description.slice(0,120)+'</div>':'') +
+      (ev.source?'<div style="color:#888;font-size:9px;margin-top:3px">'+ev.source+'</div>':'') +
+      '</div>';
+    L.marker([ev.lat, ev.lon], { icon }).bindPopup(popup, { maxWidth:240 }).addTo(layer);
+  });
+  setStatus(type.charAt(0).toUpperCase()+type.slice(1)+': ' + filtered.length + ' events loaded');
+}
+
+// ── DMS / Message Signs ───────────────────────────────────────────────────────
+var signLayerLoaded = false;
+async function fetchDMSSigns() {
+  var layer = eventLayers.signs;
+  layer.clearLayers();
+  signLayerLoaded = false;
+  setStatus('🪧 Fetching message signs…');
+
+  var sources = [];
+  if (serverAvailable) {
+    try {
+      var r = await fetch(API_BASE+'/api/signs', { signal:AbortSignal.timeout(12000) });
+      if (r.ok) sources = await r.json();
+    } catch(e) {}
+  }
+
+  // Fallback: fetch BC DriveBC messages
+  if (!sources.length) {
+    try {
+      var r = await fetch('https://api.open511.gov.bc.ca/events?format=json&event_type=CONSTRUCTION&limit=100', { signal:AbortSignal.timeout(8000) });
+      var d = await r.json();
+      sources = (d.events||[]).map(function(e){
+        var coords = e.geography && e.geography.coordinates;
+        return {
+          lat: coords&&coords[1], lon: coords&&coords[0],
+          message: e.headline||e.description||'',
+          status: e.status||'ACTIVE',
+          road: (e.roads&&e.roads[0]&&e.roads[0].name)||''
+        };
+      }).filter(function(s){ return s.lat&&s.lon; });
+    } catch(e) {}
+  }
+
+  if (!sources.length) { setStatus('🪧 No message signs available'); map.addLayer(layer); return; }
+
+  sources.forEach(function(sign) {
+    var isActive = (sign.status||'').toUpperCase().includes('ACTIVE') || !sign.status;
+    var col = isActive ? '#2C7DA0' : '#555';
+    var icon = L.divIcon({
+      html: '<div style="background:'+col+';color:#fff;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,.4);box-shadow:0 2px 6px rgba(0,0,0,.4);white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">' +
+        '🪧 '+(sign.road||'DMS')+'</div>',
+      className:'', iconSize:null
+    });
+    var popup = '<div style="font-size:12px;min-width:160px">' +
+      '<b>🪧 Message Sign</b>' +
+      (sign.road?'<div style="color:#888;font-size:10px">'+sign.road+'</div>':'') +
+      (sign.message?'<div style="margin-top:5px;background:#111;color:#FFD600;padding:6px;border-radius:4px;font-size:11px;font-family:monospace;line-height:1.5">'+sign.message+'</div>':'') +
+      '<div style="color:#888;font-size:9px;margin-top:4px">Status: '+(sign.status||'Active')+'</div>' +
+      '</div>';
+    L.marker([sign.lat, sign.lon], { icon }).bindPopup(popup, { maxWidth:260 }).addTo(layer);
+  });
+  map.addLayer(layer);
+  signLayerLoaded = true;
+  setStatus('🪧 ' + sources.length + ' message signs loaded');
+}
+
+// ── Road Conditions ───────────────────────────────────────────────────────────
+var conditionLayer = L.layerGroup();
+var conditionsLoaded = false;
+
+var COND_COLORS = {
+  'Good':     '#4CAF50',
+  'Normal':   '#4CAF50',
+  'Fair':     '#FFC107',
+  'Moderate': '#FFC107',
+  'Difficult':'#9C27B0',
+  'Poor':     '#9C27B0',
+  'Closed':   '#F44336',
+  'Unknown':  '#888888',
+  'No Report':'#888888',
+};
+
+async function toggleConditions(on) {
+  var cb = document.getElementById('lyr-conditions');
+  if (cb) cb.checked = on;
+  if (!on) { map.removeLayer(conditionLayer); return; }
+
+  map.addLayer(conditionLayer);
+  if (conditionsLoaded) return;
+
+  setStatus('🛣 Fetching road conditions…');
+  var items = [];
+
+  if (serverAvailable) {
+    try {
+      var r = await fetch(API_BASE+'/api/conditions', { signal:AbortSignal.timeout(15000) });
+      if (r.ok) items = await r.json();
+    } catch(e) {}
+  }
+
+  // Fallback: synthesize from DOT event feeds (show ban/closure locations as condition dots)
+  if (!items.length) {
+    // Use the bans layer data — show colored dots for active events
+    poiLayers.bans.eachLayer(function(l) {
+      var ll = l.getLatLng && l.getLatLng();
+      if (ll) {
+        items.push({ lat:ll.lat, lon:ll.lng, condition:'Difficult', road:'' });
+      }
+    });
+    // If still nothing, show message
+    if (!items.length) {
+      setStatus('🛣 Start server (node rigrout-server.js) for live road conditions');
+      return;
+    }
+  }
+
+  items.forEach(function(item) {
+    var col = COND_COLORS[item.condition] || '#888';
+    var icon = L.divIcon({
+      html: '<div style="width:12px;height:12px;border-radius:50%;background:'+col+';border:2px solid rgba(255,255,255,.6);box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>',
+      className:'', iconSize:[12,12], iconAnchor:[6,6]
+    });
+    var popup = '<div style="font-size:12px"><b style="color:'+col+'">●</b> <b>'+item.condition+'</b>' +
+      (item.road?'<br><span style="color:#888">'+item.road+'</span>':'') +
+      '</div>';
+    L.marker([item.lat, item.lon], { icon }).bindPopup(popup).addTo(conditionLayer);
+  });
+
+  // Draw highway segment polylines if items have geometry
+  items.filter(function(i){ return i.coords && i.coords.length > 1; }).forEach(function(item) {
+    var col = COND_COLORS[item.condition] || '#888';
+    L.polyline(item.coords, { color:col, weight:5, opacity:0.75 }).addTo(conditionLayer);
+  });
+
+  conditionsLoaded = true;
+  setStatus('🛣 ' + items.length + ' road condition segments loaded');
+}
+
+// ── Trucker Mode ──────────────────────────────────────────────────────────────
+var truckerModeOn = false;
+function toggleTruckerMode() {
+  truckerModeOn = !truckerModeOn;
+  var btn   = document.getElementById('trucker-mode-btn');
+  var badge = document.getElementById('trucker-mode-badge');
+  if (btn)   btn.classList.toggle('active', truckerModeOn);
+  if (badge) badge.style.display = truckerModeOn ? 'block' : 'none';
+
+  if (truckerModeOn) {
+    // Auto-enable trucker-relevant layers
+    ['stops','rest','weigh','bans','restrict'].forEach(function(t) {
+      togglePOIPanel(t, true);
+    });
+    // Sync checkboxes in panel
+    ['stops','rest','weigh','bans','restrict'].forEach(function(t) {
+      var cb = document.getElementById('lyr-'+t);
+      if (cb) cb.checked = true;
+    });
+    setStatus('🚛 Trucker Mode ON — truck stops, rest areas, weigh stations, road bans, and restrictions enabled');
+  } else {
+    setStatus('🚛 Trucker Mode OFF');
+  }
+}
+
+// ── Bottom bar tile switcher ──────────────────────────────────────────────────
+function switchLayerBar(key) {
+  switchLayer(key); // calls existing function
+  ['dark','street','satellite','hybrid','terrain'].forEach(function(k) {
+    var b = document.getElementById('bbar-'+k);
+    if (b) b.classList.toggle('active', k===key);
+  });
+}
+
+// ── Mobile sidebar toggle ─────────────────────────────────────────────────────
+function toggleMobileSidebar() {
+  var sb = document.getElementById('sidebar');
+  if (sb) sb.classList.toggle('mobile-open');
+}
+
+// ── Profile persistence ───────────────────────────────────────────────────────
+function saveProfile() {
+  try {
+    var p = {
+      height:   document.getElementById('p-height').value,
+      width:    document.getElementById('p-width').value,
+      length:   document.getElementById('p-length').value,
+      weight:   document.getElementById('p-weight').value,
+      axles:    document.getElementById('p-axles').value,
+      trailer:  document.getElementById('p-trailer').value,
+      hazmat:   document.getElementById('p-hazmat').value,
+      load:     loadStatus,
+      units:    units,
+      tempUnit: tempUnit
+    };
+    localStorage.setItem('rigrout_profile', JSON.stringify(p));
+  } catch(e) {}
+}
+
+function loadProfile() {
+  try {
+    var saved = JSON.parse(localStorage.getItem('rigrout_profile') || 'null');
+    if (!saved) return;
+    // Set units variable FIRST (before restoring field values) to prevent
+    // double-conversion: saved values are already in the saved unit system.
+    if (saved.units) units = saved.units;
+    if (saved.tempUnit) tempUnit = saved.tempUnit;
+    // Restore field values (they are stored in the unit they were entered in)
+    if (saved.height)  document.getElementById('p-height').value  = saved.height;
+    if (saved.width)   document.getElementById('p-width').value   = saved.width;
+    if (saved.length)  document.getElementById('p-length').value  = saved.length;
+    if (saved.weight)  document.getElementById('p-weight').value  = saved.weight;
+    if (saved.axles)   document.getElementById('p-axles').value   = saved.axles;
+    if (saved.trailer) document.getElementById('p-trailer').value = saved.trailer;
+    if (saved.hazmat)  document.getElementById('p-hazmat').value  = saved.hazmat;
+    // Now apply UI state — since units var already matches, setUnits won't convert values
+    setUnits(saved.units || 'imperial');
+    setTempUnit(saved.tempUnit || 'F');
+    if (saved.load && saved.load !== loadStatus) setLoad(saved.load);
+  } catch(e) {}
+}
+
+function updateHazmatBadge() {
+  var val = document.getElementById('p-hazmat').value;
+  var badge = document.getElementById('hazmat-badge');
+  if (badge) badge.style.display = (val && val !== 'none') ? 'flex' : 'none';
+}
+
+// ── Server-backed route audit ─────────────────────────────────────────────────
+async function runServerRouteAudit(bounds) {
+  if (!serverAvailable) return null;
+  try {
+    var bbox = bounds.getSouth()+','+bounds.getWest()+','+bounds.getNorth()+','+bounds.getEast();
+    var profile = {
+      heightFt:  getHeightFt(),
+      widthFt:   getWidthFt(),
+      weightLbs: getWeightLbs(),
+      axles:     +(document.getElementById('p-axles').value||5),
+      hazmat:    document.getElementById('p-hazmat').value||'none',
+      trailer:   document.getElementById('p-trailer').value||'53dry'
+    };
+    var r = await fetch(API_BASE+'/api/route-audit', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ bbox, profile }),
+      signal:AbortSignal.timeout(20000)
+    });
+    if (!r.ok) return null;
+    var d = await r.json();
+    return d.risks || null;
+  } catch(e) {
+    console.warn('Route audit:', e.message);
+    return null;
+  }
+}
+
+// ── More ban feeds (match server) ─────────────────────────────────────────────
+// Append extra state feeds to the frontend BAN_FEEDS array
+(function() {
+  var extraFeeds = [
+    { key:'or', name:'Oregon TripCheck', region:'OR', color:'#2C7DA0', direct:false, url:'https://tripcheck.com/api/v2/get/event?format=json', parser:'ibi511' },
+    { key:'sd', name:'South Dakota 511', region:'SD', color:'#2C7DA0', direct:false, url:'https://511sd.com/api/v2/get/event?format=json', parser:'ibi511' },
+    { key:'wy', name:'Wyoming DOT',      region:'WY', color:'#2C7DA0', direct:false, url:'https://wyoroad.info/api/v2/get/event?format=json', parser:'ibi511' },
+    { key:'co', name:'Colorado COTRIP',  region:'CO', color:'#2C7DA0', direct:false, url:'https://cotrip.org/api/v2/get/event?format=json', parser:'ibi511' },
+    { key:'ut', name:'Utah UDOT',        region:'UT', color:'#2C7DA0', direct:false, url:'https://udottraffic.utah.gov/api/v2/get/event?format=json', parser:'ibi511' },
+    { key:'ia', name:'Iowa 511',         region:'IA', color:'#2C7DA0', direct:false, url:'https://511ia.org/api/v2/get/event?format=json', parser:'ibi511' },
+    { key:'ne', name:'Nebraska 511',     region:'NE', color:'#2C7DA0', direct:false, url:'https://511.nebraska.gov/api/v2/get/event?format=json', parser:'ibi511' },
+    // NY DOT CommVehicleDataFeed — ArcGIS REST
+    { key:'ny', name:'NY DOT CommVehicle', region:'NY', color:'#E05252', direct:true,  url:'https://gis.dot.ny.gov/hostingny/rest/services/CommVehicleDataFeed/MapServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=500', parser:'arcgis' },
+    // Major trucking corridor states
+    { key:'pa', name:'Pennsylvania 511', region:'PA', color:'#2C7DA0', direct:false, url:'https://www.511pa.com/api/v2/get/event?format=json', parser:'ibi511' },
+    { key:'oh', name:'Ohio 511',         region:'OH', color:'#2C7DA0', direct:false, url:'https://www.511.org/api/v2/get/event?format=json', parser:'ibi511' },
+    { key:'mi', name:'Michigan 511',     region:'MI', color:'#2C7DA0', direct:false, url:'https://mi511.org/api/v2/get/event?format=json', parser:'ibi511' },
+    { key:'tx', name:'Texas DriveTexas', region:'TX', color:'#2C7DA0', direct:false, url:'https://www.drivetexas.org/api/v2/get/event?format=json', parser:'ibi511' },
+    { key:'il', name:'Illinois 511',     region:'IL', color:'#2C7DA0', direct:false, url:'https://www.gettingaroundillinois.com/api/v2/get/event?format=json', parser:'ibi511' },
+  ];
+  // Only add if not already present
+  extraFeeds.forEach(function(f) {
+    if (!BAN_FEEDS.find(function(x){ return x.key===f.key; })) {
+      BAN_FEEDS.push(f);
+    }
+  });
+})();
+
+// ── Patch planRoute to call server audit ──────────────────────────────────────
+var _origPlanRoute = planRoute;
+planRoute = async function() {
+  await _origPlanRoute.call(this);
+  // After route renders, run server audit on the route bounds
+  if (serverAvailable && routeLayer.getLayers().length > 0) {
+    var bounds = routeLayer.getBounds();
+    if (bounds && bounds.isValid()) {
+      var serverRisks = await runServerRouteAudit(bounds);
+      if (serverRisks && serverRisks.length) {
+        var riskEl = document.getElementById('risk-list');
+        if (riskEl) {
+          // Add icon prefix based on severity
+          var iconMap = { danger:'🛑 ', warn:'⚠️ ', info:'ℹ️ ', ok:'✅ ' };
+          riskEl.innerHTML = serverRisks.map(function(rk) {
+            var prefix = iconMap[rk.cls] || '';
+            return '<div class="risk ' + (rk.cls||'info') + '">' +
+              '<div class="risk-msg">' + prefix + rk.msg + '</div>' +
+              (rk.src?'<div class="risk-src">Source: '+rk.src+'</div>':'') +
+              (rk.lat?'<div class="risk-src">📍 '+rk.lat.toFixed(4)+', '+rk.lon.toFixed(4)+'</div>':'') +
+            '</div>';
+          }).join('');
+          // Refresh badge with server count
+          var critServer = serverRisks.filter(function(r){ return r.cls==='danger'||r.cls==='warn'; }).length;
+          var badge = document.getElementById('risk-count-badge');
+          if (badge) { badge.textContent = critServer || ''; badge.style.display = critServer ? '' : 'none'; }
+        }
+      }
+    }
+  }
+};
+
+// ── Add server /api/signs and /api/conditions endpoints to server ─────────────
+// (handled in rigrout-server.js — this just documents the client side)
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+setupGeo('inp-origin', 'sugg-origin', true);
+setupGeo('inp-dest',   'sugg-dest',   false);
+renderFavorites();
+loadFromURLParams();
+checkDisclaimer();
+initPOILayers();
+renderIncidents();
+fetchRoadBans();
+loadProfile();
+updateHazmatBadge();
+// Sync layer panel checkboxes with initial poiVisible state
+(function() {
+  Object.keys(poiVisible).forEach(function(t) {
+    var cb = document.getElementById('lyr-'+t);
+    if (cb) cb.checked = poiVisible[t];
+  });
+  // incidents checkbox in panel
+  var incCb = document.getElementById('lyr-incidents');
+  if (incCb) incCb.checked = true;
+})();
+</script>
+</body>
+</html>
