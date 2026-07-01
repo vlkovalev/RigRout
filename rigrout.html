@@ -41,30 +41,30 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 
 /* ── Layout ── */
 #app{display:flex;flex-direction:column;height:100vh}
-#header{height:46px;background:var(--pine);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0;z-index:900}
+#header{height:56px;background:var(--pine);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0;z-index:900}
 #body{display:flex;flex:1;overflow:hidden}
 
 /* ── Header ── */
-.logo{font-size:17px;font-weight:800;letter-spacing:-.5px}
+.logo{font-size:19px;font-weight:800;letter-spacing:-.5px}
 .logo em{color:var(--amber);font-style:normal}
-.logo-sub{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
+.logo-sub{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
 .hspace{flex:1}
-.badge{font-size:10px;color:var(--dim);background:var(--surf2);border:1px solid var(--border);padding:2px 8px;border-radius:4px}
-.hbtn{background:var(--surf2);border:1px solid var(--border);color:var(--text);font-size:11px;padding:4px 10px;border-radius:4px;cursor:pointer}
+.badge{font-size:12px;color:var(--dim);background:var(--surf2);border:1px solid var(--border);padding:4px 10px;border-radius:4px}
+.hbtn{background:var(--surf2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 14px;min-height:38px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .hbtn:hover{background:var(--pine-lt)}
 
 /* ── Sidebar ── */
-#sidebar{width:288px;background:var(--surf);border-right:1px solid var(--border);overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+#sidebar{width:320px;background:var(--surf);border-right:1px solid var(--border);overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
 #sidebar::-webkit-scrollbar{width:3px}
 #sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 
 .sec{padding:10px 14px;border-bottom:1px solid var(--border)}
-.sec-title{font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.9px;margin-bottom:10px}
+.sec-title{font-size:13px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.9px;margin-bottom:10px}
 
 /* ── Inputs ── */
 .field{margin-bottom:8px}
-.field label{display:block;font-size:10px;color:var(--dim);margin-bottom:3px}
-input[type=text],input[type=number],select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:5px;font-size:13px;outline:none;transition:border .15s}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--dim);margin-bottom:5px}
+input[type=text],input[type=number],select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:6px;font-size:15px;min-height:44px;outline:none;transition:border .15s}
 input:focus,select:focus{border-color:var(--blue)}
 select option{background:var(--bg)}
 .route-wrap{position:relative}
@@ -72,13 +72,13 @@ select option{background:var(--bg)}
 .rdot{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%}
 .origin-dot{background:var(--green)}
 .dest-dot{background:var(--red)}
-.sugg{display:none;position:absolute;z-index:999;left:0;right:0;background:var(--bg);border:1px solid var(--border);border-top:none;border-radius:0 0 5px 5px;max-height:140px;overflow-y:auto}
-.sugg-item{padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)}
+.sugg{display:none;position:absolute;z-index:999;left:0;right:0;background:var(--bg);border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;max-height:140px;overflow-y:auto}
+.sugg-item{padding:9px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--border)}
 .sugg-item:last-child{border-bottom:none}
 .sugg-item:hover{background:var(--surf2)}
 
 /* ── Buttons ── */
-.btn{width:100%;padding:9px;border:none;border-radius:5px;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn{width:100%;min-height:44px;padding:10px 14px;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;justify-content:center}
 .btn-primary{background:var(--blue);color:#fff}
 .btn-primary:hover{background:var(--blue-lt)}
 .btn-primary:disabled{background:var(--surf2);color:var(--dim);cursor:not-allowed}
@@ -86,23 +86,23 @@ select option{background:var(--bg)}
 .btn-ghost:hover{background:var(--surf2);color:var(--text)}
 
 /* ── Profile grid ── */
-.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-.pgrid .field label{font-size:10px}
-.pgrid .field input{padding:5px 7px;font-size:12px}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pgrid .field label{font-size:11px}
+.pgrid .field input{padding:9px 10px;font-size:14px;min-height:40px}
 .pgrid .full{grid-column:1/-1}
 
 /* ── Toggle ── */
 .trow{display:flex;align-items:center;justify-content:space-between;margin-top:9px}
-.tlabel{font-size:12px}
-.toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:4px;overflow:hidden}
-.toggle button{padding:4px 10px;font-size:11px;background:transparent;color:var(--dim);border:none;cursor:pointer;transition:all .15s}
+.tlabel{font-size:13px}
+.toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.toggle button{padding:8px 14px;font-size:13px;min-height:40px;background:transparent;color:var(--dim);border:none;cursor:pointer;transition:all .15s}
 .toggle button.on{background:var(--blue);color:#fff;box-shadow:0 1px 4px rgba(44,125,160,.35)}
 .toggle button:hover:not(.on){background:var(--surf2);color:var(--text)}
 
 /* ── Checkboxes ── */
-.checks{display:flex;flex-direction:column;gap:6px}
-.chk{display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;color:var(--text)}
-.chk input{width:13px;height:13px;cursor:pointer;accent-color:var(--blue)}
+.checks{display:flex;flex-direction:column;gap:8px}
+.chk{display:flex;align-items:center;gap:8px;font-size:14px;min-height:38px;cursor:pointer;color:var(--text)}
+.chk input{width:18px;height:18px;cursor:pointer;accent-color:var(--blue)}
 
 /* ── Map ── */
 #map-wrap{flex:1;position:relative}
@@ -155,8 +155,8 @@ select option{background:var(--bg)}
 .park-lo{background:rgba(224,82,82,.15);color:#F08080}
 
 /* ── Filter tabs ── */
-.poi-filters{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
-.ftag{font-size:16px;padding:4px 9px;border-radius:3px;border:1px solid var(--border);cursor:pointer;background:var(--bg);color:var(--dim);transition:all .15s}
+.poi-filters{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.ftag{font-size:20px;width:44px;height:44px;border-radius:6px;border:1px solid var(--border);cursor:pointer;background:var(--bg);color:var(--dim);transition:all .15s;display:inline-flex;align-items:center;justify-content:center}
 .ftag.on{background:var(--blue);border-color:var(--blue);color:#fff}
 
 /* ── Loading ── */
@@ -217,8 +217,8 @@ select option{background:var(--bg)}
 .fb-close:hover{color:var(--text)}
 .fb-head-row{display:flex;align-items:center}
 .fb-field{margin-bottom:12px}
-.fb-field label{display:block;font-size:10px;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.6px}
-.fb-field select,.fb-field input,.fb-field textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:5px;font-size:12px;outline:none;transition:border .15s;font-family:inherit}
+.fb-field label{display:block;font-size:11px;color:var(--dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+.fb-field select,.fb-field input,.fb-field textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:6px;font-size:14px;outline:none;transition:border .15s;font-family:inherit;min-height:40px}
 .fb-field select:focus,.fb-field input:focus,.fb-field textarea:focus{border-color:var(--blue)}
 .fb-field textarea{resize:vertical;min-height:90px;line-height:1.5}
 .fb-thanks{text-align:center;padding:24px 0;display:none}
@@ -227,11 +227,11 @@ select option{background:var(--bg)}
 .fb-thanks small{font-size:11px;color:var(--dim)}
 
 /* Feedback button in header */
-.hbtn-fb{background:var(--surf2);border:1px solid var(--border);color:var(--dim);font-size:11px;padding:4px 10px;border-radius:4px;cursor:pointer;transition:all .15s}
+.hbtn-fb{background:var(--surf2);border:1px solid var(--border);color:var(--dim);font-size:13px;padding:8px 14px;min-height:38px;border-radius:6px;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;justify-content:center}
 .hbtn-fb:hover{background:var(--pine-lt);color:var(--text)}
 
 /* ── GPS / Location ── */
-#gps-btn{position:absolute;bottom:60px;right:14px;z-index:800;width:36px;height:36px;background:var(--surf);border:1px solid var(--border);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .15s;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+#gps-btn{position:absolute;bottom:70px;right:14px;z-index:800;width:44px;height:44px;background:var(--surf);border:1px solid var(--border);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;transition:all .15s;box-shadow:0 2px 8px rgba(0,0,0,.4)}
 #gps-btn:hover{background:var(--pine-lt)}
 #gps-btn.active{background:var(--blue);border-color:var(--blue)}
 .gps-dot-outer{width:18px;height:18px;border-radius:50%;background:rgba(44,125,160,.25);animation:gps-pulse 2s ease-out infinite;position:absolute}
@@ -271,33 +271,33 @@ select option{background:var(--bg)}
 .inc-btn:hover{background:rgba(224,82,82,.22);color:var(--text)}
 
 /* ── Floating Layers Panel ── */
-#layers-btn{position:absolute;top:10px;right:10px;z-index:850;background:var(--surf);border:1px solid var(--border);color:var(--text);padding:6px 13px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;align-items:center;gap:5px;transition:all .15s}
+#layers-btn{position:absolute;top:10px;right:10px;z-index:850;background:var(--surf);border:1px solid var(--border);color:var(--text);padding:0 16px;height:44px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;align-items:center;gap:6px;transition:all .15s}
 #layers-btn:hover{background:var(--pine-lt)}
 #layers-btn.open{background:var(--blue);border-color:var(--blue)}
-#layers-panel{position:absolute;top:44px;right:10px;z-index:840;width:240px;background:var(--surf);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.6);overflow-y:auto;max-height:calc(100vh - 120px);transition:all .2s}
+#layers-panel{position:absolute;top:60px;right:10px;z-index:840;width:260px;background:var(--surf);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.6);overflow-y:auto;max-height:calc(100vh - 120px);transition:all .2s}
 #layers-panel.hidden{display:none}
-.lp-head{padding:10px 12px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.lp-head-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text)}
-.lp-clear{background:none;border:none;color:var(--blue);font-size:10px;cursor:pointer;padding:0;font-weight:600}
+.lp-head{padding:12px 14px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.lp-head-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text)}
+.lp-clear{background:none;border:none;color:var(--blue);font-size:12px;cursor:pointer;padding:0;font-weight:600}
 .lp-clear:hover{color:var(--blue-lt)}
-.lp-sec{padding:8px 12px;border-bottom:1px solid var(--border)}
+.lp-sec{padding:10px 14px;border-bottom:1px solid var(--border)}
 .lp-sec:last-child{border-bottom:none}
-.lp-sec-title{font-size:10px;font-weight:800;color:var(--dim);text-transform:uppercase;letter-spacing:.9px;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between}
-.lp-row{display:flex;align-items:center;gap:7px;padding:4px 0;cursor:pointer;font-size:12px;color:var(--text);user-select:none}
+.lp-sec-title{font-size:11px;font-weight:800;color:var(--dim);text-transform:uppercase;letter-spacing:.9px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.lp-row{display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer;font-size:14px;color:var(--text);user-select:none;min-height:44px}
 .lp-row:hover{color:#fff}
-.lp-row input[type=checkbox]{width:13px;height:13px;accent-color:var(--blue);cursor:pointer;flex-shrink:0}
-.lp-icon{font-size:14px;width:18px;text-align:center;flex-shrink:0}
-.lp-sub{display:flex;gap:8px;padding:4px 0 4px 20px;flex-wrap:wrap}
-.lp-sub-item{display:flex;align-items:center;gap:3px;font-size:10px;color:var(--dim)}
+.lp-row input[type=checkbox]{width:20px;height:20px;accent-color:var(--blue);cursor:pointer;flex-shrink:0}
+.lp-icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.lp-sub{display:flex;gap:8px;padding:4px 0 4px 24px;flex-wrap:wrap}
+.lp-sub-item{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--dim)}
 .lp-sub-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 /* Road Conditions legend */
-.cond-legend{display:flex;gap:0;margin:5px 0 2px;border-radius:4px;overflow:hidden;height:8px}
-.cond-seg{flex:1;height:8px}
-.cond-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--dim);margin-top:2px}
+.cond-legend{display:flex;gap:0;margin:6px 0 3px;border-radius:4px;overflow:hidden;height:10px}
+.cond-seg{flex:1;height:10px}
+.cond-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-top:2px}
 
 /* ── Map Bottom Bar (Map/Satellite/Trucker Mode) ── */
-#map-bottom-bar{position:absolute;bottom:0;left:50%;transform:translateX(-50%);z-index:820;display:flex;gap:0;background:var(--surf);border:1px solid var(--border);border-bottom:none;border-radius:10px 10px 0 0;overflow:hidden;box-shadow:0 -2px 12px rgba(0,0,0,.45)}
-.bbar-btn{padding:9px 18px;font-size:13px;font-weight:600;background:transparent;color:var(--dim);border:none;cursor:pointer;transition:all .15s;white-space:nowrap}
+#map-bottom-bar{position:absolute;bottom:0;left:50%;transform:translateX(-50%);z-index:820;display:flex;align-items:center;gap:0;background:var(--surf);border:1px solid var(--border);border-bottom:none;border-radius:10px 10px 0 0;overflow:hidden;box-shadow:0 -2px 12px rgba(0,0,0,.45)}
+.bbar-btn{height:44px;padding:0 20px;font-size:14px;font-weight:600;background:transparent;color:var(--dim);border:none;cursor:pointer;transition:all .15s;white-space:nowrap;display:flex;align-items:center;justify-content:center}
 .bbar-btn:hover{background:var(--surf2);color:var(--text)}
 .bbar-btn.active{background:var(--pine-lt);color:#fff}
 .bbar-truck{color:var(--amber);border-left:1px solid var(--border)}
@@ -310,39 +310,107 @@ select option{background:var(--bg)}
 
 /* ── Road Condition polylines use Leaflet default ── */
 /* ── Mobile layout ── */
-@media (max-width: 640px) {
-  #sidebar{width:100%;height:auto;max-height:45vh;position:absolute;bottom:0;left:0;right:0;z-index:700;border-right:none;border-top:1px solid var(--border);flex-shrink:0;display:none}
-  #sidebar.mobile-open{display:flex}
-  #body{flex-direction:column}
-  #panel{width:100%;max-height:50vh;border-left:none;border-top:1px solid var(--border)}
-  #map-wrap{flex:1;min-height:0}
-  #mobile-toggle{display:flex}
-  #layers-panel{right:6px;width:220px}
-}
-#mobile-toggle{display:none;position:absolute;top:10px;left:10px;z-index:900;background:var(--surf);border:1px solid var(--border);padding:7px 11px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.4);align-items:center;gap:5px}
-
 /* ── Via Stops (multi-stop route planning) ── */
 .via-stop-row{display:flex;gap:4px;align-items:center;margin-bottom:6px}
-.via-remove-btn{background:none;border:none;color:var(--dim);cursor:pointer;font-size:15px;padding:2px 6px;line-height:1;flex-shrink:0;border-radius:3px;transition:all .15s}
+.via-remove-btn{background:none;border:none;color:var(--dim);cursor:pointer;font-size:18px;padding:8px 12px;line-height:1;flex-shrink:0;border-radius:4px;transition:all .15s;min-height:40px;display:inline-flex;align-items:center;justify-content:center}
 .via-remove-btn:hover{color:var(--red);background:rgba(224,82,82,.12)}
-#add-via-btn{background:none;border:1px dashed var(--border);color:var(--dim);border-radius:4px;padding:5px;font-size:11px;cursor:pointer;width:100%;margin-bottom:8px;transition:all .15s}
+#add-via-btn{background:none;border:1px dashed var(--border);color:var(--dim);border-radius:6px;padding:10px;font-size:13px;cursor:pointer;width:100%;margin-bottom:8px;transition:all .15s;min-height:40px;display:inline-flex;align-items:center;justify-content:center}
 #add-via-btn:hover{border-color:var(--blue);color:var(--blue);background:rgba(44,125,160,.05)}
 
 /* ── Risk count badge on header button ── */
 .risk-cnt{display:inline-flex;align-items:center;justify-content:center;background:var(--red);color:#fff;font-size:8px;font-weight:800;min-width:14px;height:14px;padding:0 2px;border-radius:7px;margin-left:4px;vertical-align:middle;line-height:1}
 
-/* ── Layer panel — bigger touch targets ── */
-.lp-row{min-height:32px}
+/* ── Leaflet Control shift to clear Layers button ── */
+.leaflet-top.leaflet-right {
+  margin-top: 50px;
+}
 
-/* ── Mobile improvements ── */
+/* ── Mobile bottom sheet drag handle ── */
+.sheet-handle {
+  width: 40px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 8px auto 4px;
+  flex-shrink: 0;
+  display: none;
+}
+
+#mobile-toggle{display:none;position:absolute;top:10px;left:10px;z-index:900;background:var(--surf);border:1px solid var(--border);padding:0 16px;height:44px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.4);align-items:center;justify-content:center;gap:6px}
+
+/* ── Mobile Layout Media Queries ── */
 @keyframes slideUpSidebar{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
-@media (max-width:640px){
-  #sidebar.mobile-open{animation:slideUpSidebar .22s ease}
-  #header .logo-sub{display:none}
-  #header .badge{display:none}
-  #share-hbtn{display:none}
-  #panel{max-height:55vh}
-  #map-bottom-bar .bbar-btn{padding:9px 12px;font-size:12px}
+
+@media (max-width: 640px) {
+  #sidebar {
+    width: 100%;
+    height: auto;
+    max-height: 55vh;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 700;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.45);
+    flex-shrink: 0;
+    display: none;
+    padding-top: 4px;
+    animation: slideUpSidebar .22s ease;
+  }
+  #sidebar.mobile-open {
+    display: flex;
+  }
+  #body {
+    flex-direction: column;
+  }
+  #panel {
+    width: 100%;
+    max-height: 55vh;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.45);
+    padding-top: 4px;
+  }
+  #map-wrap {
+    flex: 1;
+    min-height: 0;
+  }
+  #mobile-toggle {
+    display: flex !important;
+  }
+  #layers-panel {
+    right: 6px;
+    width: 240px;
+  }
+  #header .logo-sub {
+    display: none;
+  }
+  #header .badge {
+    display: none;
+  }
+  #share-hbtn {
+    display: none;
+  }
+  #map-bottom-bar .bbar-btn {
+    padding: 9px 12px;
+    font-size: 13px;
+  }
+  .sheet-handle {
+    display: block;
+  }
+  
+  /* lists and scroll containers padding adjustments on mobile */
+  .stop {
+    padding: 12px 14px;
+  }
+  .risk {
+    padding: 12px 10px;
+    margin-bottom: 9px;
+  }
 }
 </style>
 </head>
@@ -495,6 +563,7 @@ select option{background:var(--bg)}
 
 <!-- Sidebar -->
 <div id="sidebar">
+  <div class="sheet-handle"></div>
 
   <!-- Route -->
   <div class="sec">
@@ -774,6 +843,7 @@ select option{background:var(--bg)}
 
 <!-- Right Panel -->
 <div id="panel">
+  <div class="sheet-handle"></div>
   <div class="ph">
     <span class="ph-title">⚡ Route Audit</span>
     <button class="ph-x" onclick="closePanel()" aria-label="Close route audit panel">×</button>
@@ -808,18 +878,18 @@ const map = L.map('map', { zoomControl: false }).setView([39.8, -98.6], 4);
 // ── Tile Layers ───────────────────────────────────────────────────────────────
 const TILE_LAYERS = {
   dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution:'© <a href="https://www.openstreetmap.org/copyright">OSM</a> © <a href="https://carto.com">CARTO</a>', maxZoom:19 }),
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OSM</a> © <a href="https://carto.com">CARTO</a>', maxZoom:21, maxNativeZoom:19 }),
   street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution:'© <a href="https://www.openstreetmap.org/copyright">OSM contributors</a>', maxZoom:19 }),
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OSM contributors</a>', maxZoom:21, maxNativeZoom:19 }),
   satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution:'© Esri — Earthstar Geographics', maxZoom:19 }),
+    attribution:'© Esri — Earthstar Geographics', maxZoom:21, maxNativeZoom:18 }),
   terrain: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-    attribution:'© <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)', maxZoom:17 }),
+    attribution:'© <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)', maxZoom:21, maxNativeZoom:17 }),
   hybrid: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution:'© Esri', maxZoom:19, opacity:1 }),
+    attribution:'© Esri', maxZoom:21, maxNativeZoom:18, opacity:1 }),
 };
 // Hybrid labels overlay (roads/names on top of satellite)
-const HYBRID_LABELS = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', { maxZoom:19, opacity:.85 });
+const HYBRID_LABELS = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', { maxZoom:21, maxNativeZoom:19, opacity:.85 });
 
 let currentTileKey = 'dark';
 TILE_LAYERS.dark.addTo(map);

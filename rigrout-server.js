@@ -23,6 +23,27 @@ const path  = require('path');
 const fs    = require('fs');
 const PORT  = 3001;
 
+// Load environment variables from .env if present (zero-dependency)
+try {
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, 'utf8');
+    content.split(/\r?\n/).forEach(function(line) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const idx = trimmed.indexOf('=');
+      if (idx > 0) {
+        const k = trimmed.slice(0, idx).trim();
+        const v = trimmed.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
+        process.env[k] = v;
+      }
+    });
+    console.log('  Loaded environment from .env');
+  }
+} catch (e) {
+  console.warn('  Failed to load .env file:', e.message);
+}
+
 // TTL Cache
 const _cache = new Map();
 function cacheGet(k) { const v = _cache.get(k); return v && v.exp > Date.now() ? v.data : null; }
