@@ -1324,38 +1324,7 @@ const poiCache = {};
 const poiFetching = {};
 
 async function fetchPOILayer(type) {
-  var ftag = document.getElementById('ftag-' + type);
-  if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym + ' …';
-  var bounds = map.getBounds();
-  var bbox = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast();
-  var query = '[out:json][timeout:20];' + OVERPASS_QUERIES[type].replace(/BBOX/g, bbox) + 'out center;';
-  try {
-    var r = await fetch(OVERPASS_URL, {
-      method:'POST', body:'data=' + encodeURIComponent(query),
-      signal: AbortSignal.timeout(20000)
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    var d = await r.json();
-    var pts = (d.elements||[]).map(function(e) {
-      var lat = e.lat || (e.center && e.center.lat);
-      var lon = e.lon || (e.center && e.center.lon);
-      if (!lat || !lon) return null;
-      var tags = e.tags || {};
-      return {
-        lat: lat, lon: lon,
-        name: tags.name || tags.operator || tags.brand || typeLabel(type),
-        amen: buildAmenString(tags, type),
-        opening: tags.opening_hours || ''
-      };
-    }).filter(Boolean);
-    poiCache[type] = pts;
-    if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym + (pts.length ? ' ' + pts.length : '');
-    return pts;
-  } catch(e) {
-    console.warn('Overpass ' + type + ':', e.message);
-    if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym;
-    return [];
-  }
+  return fetchPOILayerInBounds(type, map.getBounds());
 }
 
 function typeLabel(type) {
@@ -1481,11 +1450,11 @@ function togglePOI(type, el) {
     if (poiCache[type] && poiCache[type].length) {
       renderPOILayer(type, poiCache[type]);
     } else if (map.getZoom() >= 7) {
-      fetchPOILayer(type).then(function(pts) { renderPOILayer(type, pts); });
+      fetchPOILayer(type).then(function(pts) { if (pts !== null) renderPOILayer(type, pts); });
     } else {
       setStatus('Zoom in or plan a route to load ' + typeLabel(type) + 's');
       // Try anyway with current bounds
-      fetchPOILayer(type).then(function(pts) { renderPOILayer(type, pts); });
+      fetchPOILayer(type).then(function(pts) { if (pts !== null) renderPOILayer(type, pts); });
     }
   } else {
     map.removeLayer(layer);
@@ -1501,8 +1470,7 @@ map.on('moveend', function() {
     if (map.getZoom() < 7) return; // too zoomed out — skip auto-refresh
     Object.keys(poiVisible).forEach(function(type) {
       if (poiVisible[type] && poiLayers[type] && OVERPASS_QUERIES[type]) {
-        delete poiCache[type];
-        fetchPOILayer(type).then(function(pts) { renderPOILayer(type, pts); });
+        fetchPOILayer(type).then(function(pts) { if (pts !== null) renderPOILayer(type, pts); });
       }
     });
   }, 1500);
@@ -2233,15 +2201,15 @@ async function fetchWeather() {
   }
 }
 
-function fetchPOIsAlongRoute(bounds) {
+async function fetchPOIsAlongRoute(bounds) {
   // Auto-enable stops/rest/border when a route is planned
   ['stops','rest','border','cardlock'].forEach(function(t) {
     poiVisible[t] = true;
     var tag = document.getElementById('ftag-'+t);
     if (tag) tag.classList.add('on');
   });
-  // ~40km buffer each side
-  var buf = 0.4;
+  // ~8km buffer each side
+  var buf = 0.08;
   var exp = L.latLngBounds(
     [bounds.getSouth()-buf, bounds.getWest()-buf],
     [bounds.getNorth()+buf, bounds.getEast()+buf]
@@ -2251,10 +2219,14 @@ function fetchPOIsAlongRoute(bounds) {
   var types = Array.from(new Set(alwaysFetch.concat(
     ['cardlock','weigh','repair','ev'].filter(function(t){ return poiVisible[t]; })
   )));
-  types.forEach(function(type) {
+  
+  await Promise.allSettled(types.map(async function(type) {
     delete poiCache[type];
-    fetchPOILayerInBounds(type, exp).then(function(pts){ renderPOILayer(type, pts); });
-  });
+    const pts = await fetchPOILayerInBounds(type, exp);
+    if (pts !== null) {
+      renderPOILayer(type, pts);
+    }
+  }));
 }
 
 async function fetchPOILayerInBounds(type, bounds) {
@@ -2301,7 +2273,7 @@ async function fetchPOILayerInBounds(type, bounds) {
     } catch(e) { console.warn('Overpass endpoint',ei,e.message); }
   }
   if (ftag) ftag.textContent = (POI_ICONS[type]||{sym:'?'}).sym + ' ✕';
-  return poiCache[type]||[];
+  return null;
 }
 
 async function planRoute() {
@@ -2480,6 +2452,10 @@ const BAN_FEEDS = [
   { key:'on', name:'Ontario 511',      region:'ON', color:'#F5A623', direct:false,
     url:'https://511on.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
   // US Northwest
+  // NOTE: WA isn't actually on the IBI511 platform — it's WSDOT's own separate
+  // Traveler Information API with different auth. This entry will keep
+  // erroring until that's built as its own integration; left in rather than
+  // silently dropped so the gap stays visible. See README.
   { key:'wa', name:'Washington DOT',   region:'WA', color:'#2C7DA0', direct:false,
     url:'https://wsdot.wa.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
   { key:'or', name:'Oregon TripCheck', region:'OR', color:'#2C7DA0', direct:false,
@@ -2500,8 +2476,8 @@ const BAN_FEEDS = [
   { key:'wi', name:'Wisconsin 511',    region:'WI', color:'#2C7DA0', direct:false,
     url:'https://511wi.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
   // US Midwest
-  { key:'mi', name:'Michigan 511',     region:'MI', color:'#2C7DA0', direct:false,
-    url:'https://michigan511.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  // Michigan omitted: michigan511.org no longer resolves (DNS failure) and no
+  // verified drop-in replacement feed has been confirmed yet — see README.
   { key:'oh', name:'Ohio OHGO',        region:'OH', color:'#2C7DA0', direct:false,
     url:'https://www.ohgo.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
   { key:'ia', name:'Iowa 511',         region:'IA', color:'#2C7DA0', direct:false,
@@ -2520,7 +2496,7 @@ const BAN_FEEDS = [
   { key:'co', name:'Colorado COTRIP',  region:'CO', color:'#2C7DA0', direct:false,
     url:'https://cotrip.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
   { key:'ut', name:'Utah UDOT',        region:'UT', color:'#2C7DA0', direct:false,
-    url:'https://udottraffic.utah.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+    url:'https://prod-ut.ibi511.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
   // US East
   { key:'pa', name:'Pennsylvania 511', region:'PA', color:'#2C7DA0', direct:false,
     url:'https://www.511pa.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
@@ -2576,6 +2552,23 @@ function parseFeedEvents(feed, data) {
         lon:  (e.geography&&e.geography.coordinates&&e.geography.coordinates[0])||null };
     });
   }
+  if (feed.parser === 'arcgis') {
+    // ArcGIS REST feature query shape: {features:[{attributes:{}, geometry:{x,y}}]}.
+    // Falling through to the generic branch below would call .map() on the
+    // response object itself (not an array) and throw, which is why NY DOT
+    // (the only arcgis-parsed feed) always showed ERROR in the no-server
+    // fallback path even though its endpoint is CORS-open and reachable.
+    return (data.features || []).map(function(f) {
+      var a = f.attributes || {}, g = f.geometry || {};
+      return { headline: a.RESTRICTION_TYPE||a.EVENT_TYPE||a.TYPE||'',
+        desc: a.DESCRIPTION||a.RESTRICTION_DESC||a.COMMENT||'',
+        type: a.RESTRICTION_TYPE||a.EVENT_TYPE||'restriction',
+        road: a.ROUTE||a.ROAD_NAME||a.LOCATION||'',
+        area: a.COUNTY||a.REGION||'NY',
+        lat:  g.y!=null?g.y:(a.LATITUDE!=null?a.LATITUDE:null),
+        lon:  g.x!=null?g.x:(a.LONGITUDE!=null?a.LONGITUDE:null) };
+    });
+  }
   return (data.Events||data.events||data||[]).map(function(e) {
     return { headline: e.EventType||e.Headline||e.headline||'',
       desc: e.Description||e.description||'',
@@ -2596,36 +2589,51 @@ async function fetchRoadBans() {
   if (serverAvailable) {
     try {
       if (sourcesEl) sourcesEl.innerHTML = '<div style="font-size:11px;color:var(--dim)">⏳ Loading bans via server…</div>';
-      var r = await fetch(API_BASE+'/api/layers?types=bans', { signal:AbortSignal.timeout(35000) });
+      var bounds = map.getBounds();
+      var bbox = bounds.getSouth()+','+bounds.getWest()+','+bounds.getNorth()+','+bounds.getEast();
+      var r = await fetch(API_BASE+'/api/layers?types=bans&bbox='+bbox, { signal:AbortSignal.timeout(35000) });
       var d = await r.json();
       var allBans = (d.layers&&d.layers.bans)||[];
       var feedStatus = (d.layers&&d.layers._banFeedStatus)||{};
       // Render source status from server response
       if (sourcesEl) {
-        var canada  = ['bc','ab','on'];
-        var usNW    = ['wa','or','id','mt'];
-        var usPlain = ['nd','sd','wy','mn','wi'];
-        var usMid   = ['mi','oh','ia','ne','mo','il'];
-        var usSouth = ['tx','ks','co','ut','pa','ny'];
-        function sRow(key) {
-          var fs = feedStatus[key]||{};
-          var ct = fs.status==='ok' ? (fs.bans&&fs.bans.length ? fs.bans.length+' ⚠':'✓') : (fs.status==='error'?'✕':'?');
-          var cl = fs.status==='ok' ? (fs.bans&&fs.bans.length?'active':'ok') : 'err';
-          var nm = fs.name||key.toUpperCase();
-          var dot = {bc:'#E05252',ab:'#F5A623',on:'#F5A623'}[key]||'#2C7DA0';
-          return '<div class="ban-src-row" title="'+(fs.err||nm)+'">'+'<div class="ban-src-dot" style="background:'+dot+'"></div><span class="ban-src-name">'+nm+'</span><span class="ban-src-count '+cl+'">'+ct+'</span></div>';
+        if (feedStatus.tomtom) {
+          var fs = feedStatus.tomtom;
+          var ct = fs.status==='ok' ? (allBans.length+' active') : '✕';
+          var cl = fs.status==='ok' ? 'active' : 'err';
+          sourcesEl.innerHTML =
+            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.7px">Unified Feed</div>'+
+            '<div class="ban-src-row" title="'+(fs.err||'TomTom Live Traffic')+'">'+
+            '<div class="ban-src-dot" style="background:#10B981"></div>'+
+            '<span class="ban-src-name">TomTom Live Traffic</span>'+
+            '<span class="ban-src-count '+cl+'">'+ct+'</span>'+
+            '</div>';
+        } else {
+          var canada  = ['bc','ab','on'];
+          var usNW    = ['wa','or','id','mt'];
+          var usPlain = ['nd','sd','wy','mn','wi'];
+          var usMid   = ['mi','oh','ia','ne','mo','il'];
+          var usSouth = ['tx','ks','co','ut','pa','ny'];
+          function sRow(key) {
+            var fs = feedStatus[key]||{};
+            var ct = fs.status==='ok' ? (fs.bans&&fs.bans.length ? fs.bans.length+' ⚠':'✓') : (fs.status==='error'?'✕':'?');
+            var cl = fs.status==='ok' ? (fs.bans&&fs.bans.length?'active':'ok') : 'err';
+            var nm = fs.name||key.toUpperCase();
+            var dot = {bc:'#E05252',ab:'#F5A623',on:'#F5A623'}[key]||'#2C7DA0';
+            return '<div class="ban-src-row" title="'+(fs.err||nm)+'">'+'<div class="ban-src-dot" style="background:'+dot+'"></div><span class="ban-src-name">'+nm+'</span><span class="ban-src-count '+cl+'">'+ct+'</span></div>';
+          }
+          sourcesEl.innerHTML =
+            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.7px">Canada</div>'+
+            '<div class="ban-src-grid">'+canada.map(sRow).join('')+'</div>'+
+            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Northwest</div>'+
+            '<div class="ban-src-grid">'+usNW.map(sRow).join('')+'</div>'+
+            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Northern Plains</div>'+
+            '<div class="ban-src-grid">'+usPlain.map(sRow).join('')+'</div>'+
+            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Midwest</div>'+
+            '<div class="ban-src-grid">'+usMid.map(sRow).join('')+'</div>'+
+            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">South / East</div>'+
+            '<div class="ban-src-grid">'+usSouth.map(sRow).join('')+'</div>';
         }
-        sourcesEl.innerHTML =
-          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.7px">Canada</div>'+
-          '<div class="ban-src-grid">'+canada.map(sRow).join('')+'</div>'+
-          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Northwest</div>'+
-          '<div class="ban-src-grid">'+usNW.map(sRow).join('')+'</div>'+
-          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Northern Plains</div>'+
-          '<div class="ban-src-grid">'+usPlain.map(sRow).join('')+'</div>'+
-          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Midwest</div>'+
-          '<div class="ban-src-grid">'+usMid.map(sRow).join('')+'</div>'+
-          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">South / East</div>'+
-          '<div class="ban-src-grid">'+usSouth.map(sRow).join('')+'</div>';
       }
       if (totalEl) { if (allBans.length) { totalEl.textContent=allBans.length+' active'; totalEl.style.display=''; } else totalEl.style.display='none'; }
       // Convert to renderBans format
@@ -2684,6 +2692,14 @@ async function fetchRoadBans() {
     var liveCount    = BAN_FEEDS.filter(function(f){ var s=srcState[f.key]; return s&&s.status==='ok'; }).length;
     var errCount     = BAN_FEEDS.filter(function(f){ var s=srcState[f.key]; return s&&s.status==='error'; }).length;
 
+    // Most of these feeds don't set CORS headers for direct browser access —
+    // that's exactly why rigrout-server.js exists as a proxy. When it's not
+    // running, this fallback tries free public CORS-bypass proxies first,
+    // but those are third-party services with no uptime guarantee, so a wall
+    // of errors here usually means "start the local server," not "these 22
+    // states' road-ban systems are all down at once."
+    var showServerHint = !loadingCount && errCount >= 10;
+
     sourcesEl.innerHTML =
       '<div style="display:flex;gap:8px;font-size:10px;margin-bottom:8px;flex-wrap:wrap">' +
         '<span style="color:var(--green)">● '+liveCount+' live</span>' +
@@ -2691,6 +2707,11 @@ async function fetchRoadBans() {
         (errCount ? '<span style="color:var(--red)">✕ '+errCount+' error</span>' : '') +
         '<span style="color:var(--dim);margin-left:auto">'+BAN_FEEDS.length+' feeds</span>' +
       '</div>' +
+      (showServerHint ?
+        '<div style="font-size:10px;color:var(--amber);background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.25);border-radius:5px;padding:7px 9px;margin-bottom:8px;line-height:1.4">'+
+        '⚠ Most state/provincial feeds block direct browser access and need the local server to proxy them. '+
+        '<strong>Run <code>node rigrout-server.js</code></strong> (see README) and reload — this is expected without it, not a sign every feed is actually down.'+
+        '</div>' : '') +
       '<div style="font-size:9px;font-weight:700;color:var(--dim);margin-bottom:3px;text-transform:uppercase;letter-spacing:.7px">🇨🇦 Canada</div>' +
       canada.map(srcRow).join('') +
       '<div style="font-size:9px;font-weight:700;color:var(--dim);margin:6px 0 3px;text-transform:uppercase;letter-spacing:.7px">🇺🇸 United States</div>' +
@@ -2846,7 +2867,9 @@ async function toggleEventLayer(type, on) {
   var allEvents = [];
   if (serverAvailable) {
     try {
-      var r = await fetch(API_BASE+'/api/layers?types=bans', { signal:AbortSignal.timeout(20000) });
+      var bounds = map.getBounds();
+      var bbox = bounds.getSouth()+','+bounds.getWest()+','+bounds.getNorth()+','+bounds.getEast();
+      var r = await fetch(API_BASE+'/api/layers?types=bans&bbox='+bbox, { signal:AbortSignal.timeout(20000) });
       var d = await r.json();
       allEvents = (d.layers && d.layers.bans) || [];
     } catch(e) {}

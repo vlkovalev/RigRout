@@ -21,7 +21,7 @@ const https = require('https');
 const url   = require('url');
 const path  = require('path');
 const fs    = require('fs');
-const PORT  = 3001;
+const PORT  = process.env.PORT || 3001;
 
 // Load environment variables from .env if present (zero-dependency)
 try {
@@ -217,51 +217,136 @@ function normalizePOI(el, type) {
 
 // Road Bans — confirmed-working or corrected URLs (audited May 2026)
 // ✓ = confirmed working  ✗ = removed (bad domain/blocked)  ~ = URL corrected
+// A number of these feeds sit on the "511/IBI Group" white-label platform and
+// gate their /get/event endpoint behind a free developer key (confirmed via
+// each state's own /developers/doc page for Idaho, Wisconsin, New York, Utah).
+// Some deployments (Alberta, Ontario) leave it open with no key. Where a feed
+// needs one, set the matching env var below — the code appends it to the
+// request automatically, no further changes needed. See README for signup
+// links. Feeds left without a keyEnv are believed open, per BC/AB/ON/NY
+// actually returning data unauthenticated as of this writing.
 const BAN_FEEDS = [
   // ── Canada ────────────────────────────────────────────────────────────────────
-  { key:'bc', name:'BC DriveBC',       url:'https://api.open511.gov.bc.ca/events?format=json', parser:'open511' }, // ✓ Open511
-  { key:'ab', name:'Alberta 511',      url:'https://511.alberta.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ✓
-  { key:'on', name:'Ontario 511',      url:'https://511on.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ✓
+  { key:'bc', name:'BC DriveBC',       url:'https://api.open511.gov.bc.ca/events?format=json', parser:'open511' }, // ✓ verified working, no key
+  { key:'ab', name:'Alberta 511',      url:'https://511.alberta.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ✓ verified working, no key
+  { key:'on', name:'Ontario 511',      url:'https://511on.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ✓ verified working, no key
   // sk/mb: no public JSON API — removed
   // ── US Northwest ──────────────────────────────────────────────────────────────
-  { key:'wa', name:'Washington DOT',   url:'https://wsdot.wa.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ corrected domain
-  { key:'or', name:'Oregon TripCheck', url:'https://www.tripcheck.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added www
-  { key:'id', name:'Idaho 511',        url:'https://511.idaho.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
-  { key:'mt', name:'Montana DOT',      url:'https://511mt.net/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ corrected domain
+  // WA does NOT run the IBI511 platform — it's WSDOT's own separate Traveler
+  // Information API (wsdot.wa.gov/traffic/api/), different URL structure and
+  // its own "Access Code" auth, not the 'key' param below. Needs a dedicated
+  // integration, not a URL tweak — left in as a known gap rather than guessed at.
+  { key:'wa', name:'Washington DOT',   url:'https://wsdot.wa.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'or', name:'Oregon TripCheck', url:'https://www.tripcheck.com/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_OR' },
+  { key:'id', name:'Idaho 511',        url:'https://511.idaho.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_ID' }, // confirmed: requires key, register at 511.idaho.gov/developers/doc
+  { key:'mt', name:'Montana DOT',      url:'https://511mt.net/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_MT' },
   // ── US Northern Plains ────────────────────────────────────────────────────────
-  { key:'nd', name:'North Dakota 511', url:'https://511.nd.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ removed www
-  { key:'sd', name:'South Dakota 511', url:'https://sd511.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ corrected domain
-  { key:'wy', name:'Wyoming DOT',      url:'https://wyoroad.info/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
-  { key:'mn', name:'Minnesota 511',    url:'https://511mn.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
-  { key:'wi', name:'Wisconsin 511',    url:'https://511wi.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'nd', name:'North Dakota 511', url:'https://511.nd.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_ND' },
+  { key:'sd', name:'South Dakota 511', url:'https://sd511.org/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_SD' },
+  { key:'wy', name:'Wyoming DOT',      url:'https://wyoroad.info/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_WY' },
+  { key:'mn', name:'Minnesota 511',    url:'https://511mn.org/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_MN' },
+  { key:'wi', name:'Wisconsin 511',    url:'https://511wi.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_WI' }, // confirmed: requires key, register at 511wi.gov/developers/help
   // ── US Midwest ────────────────────────────────────────────────────────────────
-  { key:'mi', name:'Michigan 511',     url:'https://michigan511.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ corrected domain
-  { key:'oh', name:'Ohio OHGO',        url:'https://www.ohgo.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ OhGo is OH's current system
-  { key:'ia', name:'Iowa 511',         url:'https://511ia.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
-  { key:'ne', name:'Nebraska 511',     url:'https://511.nebraska.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
-  { key:'mo', name:'Missouri 511',     url:'https://traveler.modot.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
-  { key:'il', name:'Illinois 511',     url:'https://www.gettingaroundillinois.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  // Michigan: michigan511.org no longer resolves (DNS failure) — MDOT appears
+  // to have retired that domain. Their current open-data presence is GIS-based
+  // (gis-mdot.opendata.arcgis.com / michigan.data.socrata.com), not a matching
+  // events feed we've confirmed, so this is disabled rather than pointed at an
+  // unverified replacement. Needs real research, not a guess.
+  // { key:'mi', name:'Michigan 511', url:'https://michigan511.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'oh', name:'Ohio OHGO',        url:'https://www.ohgo.com/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_OH' },
+  { key:'ia', name:'Iowa 511',         url:'https://511ia.org/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_IA' },
+  { key:'ne', name:'Nebraska 511',     url:'https://511.nebraska.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_NE' },
+  { key:'mo', name:'Missouri 511',     url:'https://traveler.modot.org/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_MO' },
+  { key:'il', name:'Illinois 511',     url:'https://www.gettingaroundillinois.com/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_IL' },
   // ── US South / Great Plains ───────────────────────────────────────────────────
-  { key:'tx', name:'Texas DriveTexas', url:'https://www.drivetexas.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
-  { key:'ks', name:'Kansas 511',       url:'https://www.kandrive.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
-  { key:'co', name:'Colorado COTRIP',  url:'https://cotrip.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
-  { key:'ut', name:'Utah UDOT',        url:'https://udottraffic.utah.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'tx', name:'Texas DriveTexas', url:'https://www.drivetexas.org/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_TX' },
+  { key:'ks', name:'Kansas 511',       url:'https://www.kandrive.org/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_KS' },
+  { key:'co', name:'Colorado COTRIP',  url:'https://cotrip.org/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_CO' },
+  { key:'ut', name:'Utah UDOT',        url:'https://prod-ut.ibi511.com/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_UT' }, // domain corrected: udottraffic.utah.gov -> prod-ut.ibi511.com; confirmed: requires key
   // ── US East ───────────────────────────────────────────────────────────────────
-  { key:'pa', name:'Pennsylvania 511', url:'https://www.511pa.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
-  { key:'ny', name:'NY DOT CommVehicle', url:'https://gis.dot.ny.gov/hostingny/rest/services/CommVehicleDataFeed/MapServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=500', parser:'arcgis' }, // ✓ ArcGIS
+  { key:'pa', name:'Pennsylvania 511', url:'https://www.511pa.com/api/v2/get/event?format=json&lang=en', parser:'ibi511', keyEnv:'BAN_KEY_PA' },
+  { key:'ny', name:'NY DOT CommVehicle', url:'https://gis.dot.ny.gov/hostingny/rest/services/CommVehicleDataFeed/MapServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=500', parser:'arcgis' }, // ✓ verified working, ArcGIS, no key
 ];
 const BAN_KW = ['weight restriction','load restriction','spring ban','frost law','seasonal',
   'overweight','weight limit','road ban','axle weight','weight reduced','load limit',
   'spring thaw','spring weight','posting','lhv','long combination'];
 
-async function fetchBansLayer() {
+async function fetchBansLayer(bounds) {
+  if (process.env.TOMTOM_API_KEY) {
+    const qBounds = bounds || { s: 24.0, w: -125.0, n: 49.0, e: -66.0 };
+    const zoom = bounds ? 11 : 5;
+    const ck = 'bans_tomtom_' + qBounds.s.toFixed(2) + '_' + qBounds.w.toFixed(2) + '_' + qBounds.n.toFixed(2) + '_' + qBounds.e.toFixed(2) + '_' + zoom;
+    const cached = cacheGet(ck);
+    if (cached) return cached;
+
+    const minLon = qBounds.w;
+    const minLat = qBounds.s;
+    const maxLon = qBounds.e;
+    const maxLat = qBounds.n;
+    const key = process.env.TOMTOM_API_KEY;
+    const url = 'https://api.tomtom.com/traffic/services/4/incidentDetails/socr/' +
+      minLon + ',' + minLat + ',' + maxLon + ',' + maxLat + '/' + zoom + '/json?key=' + key;
+
+    try {
+      console.log('  Fetching unified bans from TomTom API (zoom ' + zoom + ')...');
+      const text = await serverFetch(url, { timeout: 15000 });
+      const data = JSON.parse(text);
+      const pois = (data.tm && data.tm.poi) || [];
+
+      const items = pois.map(function(poi, idx) {
+        return {
+          id: 'bans_tomtom_' + idx + '_' + Date.now(),
+          type: 'bans',
+          lat: poi.p.y,
+          lon: poi.p.x,
+          title: poi.c === 'construction' ? 'Roadwork' : (poi.ic === 14 ? 'Road Closed' : 'Traffic Event'),
+          icon: 'ban',
+          color: '#E05252',
+          source: 'TomTom Live Traffic',
+          updatedAt: new Date().toISOString(),
+          props: {
+            description: poi.d,
+            road: poi.f || poi.t || 'Roadway',
+            area: 'TomTom',
+            feedKey: 'tomtom',
+            feedName: 'TomTom Live Traffic'
+          }
+        };
+      });
+
+      const res = {
+        items: items,
+        feedStatus: {
+          tomtom: { name: 'TomTom Live Traffic', bans: items, status: 'ok' }
+        }
+      };
+      cacheSet(ck, res, 5 * 60 * 1000); // cache TomTom for 5m
+      return res;
+    } catch (e) {
+      console.warn('  ERR TomTom Traffic Incidents API:', e.message);
+      return {
+        items: [],
+        feedStatus: {
+          tomtom: { name: 'TomTom Live Traffic', bans: [], status: 'error', err: e.message }
+        }
+      };
+    }
+  }
+
   const ck = 'bans_all';
   const cached = cacheGet(ck);
   if (cached) return cached;
   const feedResults = {};
   await Promise.allSettled(BAN_FEEDS.map(async function(feed) {
     try {
-      const text = await serverFetch(feed.url, { timeout:12000 });
+      // Some IBI511-platform feeds require a free registered developer key
+      // (confirmed for at least ID/WI/NY/UT — see README). If the matching
+      // env var is set, append it; feeds with no keyEnv or an unset var are
+      // requested exactly as before.
+      const fetchUrl = (feed.keyEnv && process.env[feed.keyEnv])
+        ? feed.url + '&key=' + encodeURIComponent(process.env[feed.keyEnv])
+        : feed.url;
+      const text = await serverFetch(fetchUrl, { timeout:12000 });
       if (!text.trim() || text.trim()[0]==='<') throw new Error('Non-JSON');
       const data = JSON.parse(text);
       const evts = feed.parser==='open511'
@@ -383,7 +468,7 @@ async function handleLayers(req, res, query) {
   const layers = {};
   await Promise.allSettled(types.map(async function(type) {
     if (type==='bans') {
-      const r = await fetchBansLayer();
+      const r = await fetchBansLayer(bounds);
       layers.bans = r.items;
       layers._banFeedStatus = r.feedStatus;
       return;
