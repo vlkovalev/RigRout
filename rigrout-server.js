@@ -120,16 +120,21 @@ function serverFetch(urlStr, opts, _redirects) {
   return new Promise(function(resolve, reject) {
     const parsed  = new URL(urlStr);
     const lib     = parsed.protocol === 'https:' ? https : http;
+    const headers = Object.assign({
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+    }, opts.headers || {});
+    if (opts.body) {
+      if (!headers['Content-Type']) headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      headers['Content-Length'] = Buffer.byteLength(opts.body);
+    }
     const reqOpts = {
       hostname: parsed.hostname,
       port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
       path:     parsed.pathname + parsed.search,
       method:   opts.method || 'GET',
-      headers:  Object.assign({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-      }, opts.headers || {}),
+      headers:  headers,
     };
     const timer = setTimeout(function() { req.destroy(); reject(new Error('Timeout')); }, opts.timeout || 15000);
     const req = lib.request(reqOpts, function(res) {
@@ -271,68 +276,118 @@ const BAN_KW = ['weight restriction','load restriction','spring ban','frost law'
   'overweight','weight limit','road ban','axle weight','weight reduced','load limit',
   'spring thaw','spring weight','posting','lhv','long combination'];
 
-async function fetchBansLayer(bounds) {
-  if (process.env.TOMTOM_API_KEY) {
-    const qBounds = bounds || { s: 24.0, w: -125.0, n: 49.0, e: -66.0 };
-    const zoom = bounds ? 11 : 5;
-    const ck = 'bans_tomtom_' + qBounds.s.toFixed(2) + '_' + qBounds.w.toFixed(2) + '_' + qBounds.n.toFixed(2) + '_' + qBounds.e.toFixed(2) + '_' + zoom;
-    const cached = cacheGet(ck);
-    if (cached) return cached;
+// Michigan's dev-API domain (michigan511.org) is dead and no ibi511-style
+// replacement was found (see the commented-out 'mi' BAN_FEEDS entry above).
+// MDOT does publish its Spring Weight Restriction Bulletins on a plain public
+// HTML page that needs no key, so this scrapes that page directly as a
+// stand-in. It's more fragile than the JSON feeds above — it depends on
+// MDOT's page markup not changing — and it only covers the single current
+// statewide bulletin, not point-level events: the bulletins describe
+// route-based boundaries ("north of the US-2 and M-134 line"), not lat/lon
+// points, so it's surfaced as one marker at a representative Michigan
+// location with the full bulletin text in the description rather than
+// pretending to know exactly which segment is restricted.
+async function scrapeMichiganWeightBulletin() {
+  const url = 'https://mdotjboss.state.mi.us/APSWB/SWBHome.htm?bulletin=weight';
+  const html = await serverFetch(url, { timeout: 12000 });
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
 
-    const minLon = qBounds.w;
-    const minLat = qBounds.s;
-    const maxLon = qBounds.e;
-    const maxLat = qBounds.n;
-    const key = process.env.TOMTOM_API_KEY;
-    const url = 'https://api.tomtom.com/traffic/services/4/incidentDetails/socr/' +
-      minLon + ',' + minLat + ',' + maxLon + ',' + maxLat + '/' + zoom + '/json?key=' + key;
-
-    try {
-      console.log('  Fetching unified bans from TomTom API (zoom ' + zoom + ')...');
-      const text = await serverFetch(url, { timeout: 15000 });
-      const data = JSON.parse(text);
-      const pois = (data.tm && data.tm.poi) || [];
-
-      const items = pois.map(function(poi, idx) {
-        return {
-          id: 'bans_tomtom_' + idx + '_' + Date.now(),
-          type: 'bans',
-          lat: poi.p.y,
-          lon: poi.p.x,
-          title: poi.c === 'construction' ? 'Roadwork' : (poi.ic === 14 ? 'Road Closed' : 'Traffic Event'),
-          icon: 'ban',
-          color: '#E05252',
-          source: 'TomTom Live Traffic',
-          updatedAt: new Date().toISOString(),
-          props: {
-            description: poi.d,
-            road: poi.f || poi.t || 'Roadway',
-            area: 'TomTom',
-            feedKey: 'tomtom',
-            feedName: 'TomTom Live Traffic'
-          }
-        };
-      });
-
-      const res = {
-        items: items,
-        feedStatus: {
-          tomtom: { name: 'TomTom Live Traffic', bans: items, status: 'ok' }
-        }
-      };
-      cacheSet(ck, res, 5 * 60 * 1000); // cache TomTom for 5m
-      return res;
-    } catch (e) {
-      console.warn('  ERR TomTom Traffic Incidents API:', e.message);
-      return {
-        items: [],
-        feedStatus: {
-          tomtom: { name: 'TomTom Live Traffic', bans: [], status: 'error', err: e.message }
-        }
-      };
-    }
+  // Each bulletin renders as: "Title: Spring Weight Restriction Bulletin #N
+  // Date: MM/DD/YYYY <body text...> Return to Top" — extract every block,
+  // then keep only the highest-numbered one (the current standing order;
+  // older bulletins in the page are superseded history).
+  const re = /Title:\s*Spring Weight Restriction Bulletin\s*#\s*(\d+)\s*Date:\s*(\d{1,2}\/\d{1,2}\/\d{4})\s*([\s\S]*?)(?=Title:\s*Spring Weight Restriction Bulletin|Return to Top)/gi;
+  const bulletins = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    bulletins.push({ num: parseInt(m[1], 10), date: m[2], body: m[3].trim() });
   }
+  if (!bulletins.length) throw new Error('No bulletins found — page structure may have changed');
+  const latest = bulletins.reduce(function(a, b) { return b.num > a.num ? b : a; });
+  return {
+    headline: 'Michigan Spring Weight Restriction Bulletin #' + latest.num + ' (' + latest.date + ')',
+    desc: latest.body
+  };
+}
 
+// TomTom gives live traffic incidents/roadwork/closures for all of North
+// America with a single API key — useful, but its categories don't include
+// the seasonal weight-restriction/frost-law postings that are the actual
+// reason the state DOT feeds below exist for a trucking app (confirmed via
+// TomTom's own incident-category docs: Accident/RoadWorks/JamLane/Closure —
+// no weight-posting category). So this is fetched as a SUPPLEMENT merged
+// alongside the state feeds in fetchBansLayer(), not a replacement for them.
+async function fetchTomTomBans(bounds) {
+  if (!process.env.TOMTOM_API_KEY) return { items: [], feedStatus: {} };
+
+  const qBounds = bounds || { s: 24.0, w: -125.0, n: 49.0, e: -66.0 };
+  const zoom = bounds ? 11 : 5;
+  const ck = 'bans_tomtom_' + qBounds.s.toFixed(2) + '_' + qBounds.w.toFixed(2) + '_' + qBounds.n.toFixed(2) + '_' + qBounds.e.toFixed(2) + '_' + zoom;
+  const cached = cacheGet(ck);
+  if (cached) return cached;
+
+  const minLon = qBounds.w;
+  const minLat = qBounds.s;
+  const maxLon = qBounds.e;
+  const maxLat = qBounds.n;
+  const key = process.env.TOMTOM_API_KEY;
+  const url = 'https://api.tomtom.com/traffic/services/4/incidentDetails/socr/' +
+    minLon + ',' + minLat + ',' + maxLon + ',' + maxLat + '/' + zoom + '/json?key=' + key;
+
+  try {
+    console.log('  Fetching supplemental bans from TomTom API (zoom ' + zoom + ')...');
+    const text = await serverFetch(url, { timeout: 15000 });
+    const data = JSON.parse(text);
+    const pois = (data.tm && data.tm.poi) || [];
+
+    const items = pois.map(function(poi, idx) {
+      return {
+        id: 'bans_tomtom_' + idx + '_' + Date.now(),
+        type: 'bans',
+        lat: poi.p.y,
+        lon: poi.p.x,
+        title: poi.c === 'construction' ? 'Roadwork' : (poi.ic === 14 ? 'Road Closed' : 'Traffic Event'),
+        icon: 'ban',
+        color: '#E05252',
+        source: 'TomTom Live Traffic',
+        updatedAt: new Date().toISOString(),
+        props: {
+          description: poi.d,
+          road: poi.f || poi.t || 'Roadway',
+          area: 'TomTom',
+          feedKey: 'tomtom',
+          feedName: 'TomTom Live Traffic'
+        }
+      };
+    });
+
+    const res = {
+      items: items,
+      feedStatus: {
+        tomtom: { name: 'TomTom Live Traffic', bans: items, status: 'ok' }
+      }
+    };
+    cacheSet(ck, res, 5 * 60 * 1000); // cache TomTom for 5m
+    return res;
+  } catch (e) {
+    console.warn('  ERR TomTom Traffic Incidents API:', e.message);
+    return {
+      items: [],
+      feedStatus: {
+        tomtom: { name: 'TomTom Live Traffic', bans: [], status: 'error', err: e.message }
+      }
+    };
+  }
+}
+
+async function fetchStateBanFeeds() {
   const ck = 'bans_all';
   const cached = cacheGet(ck);
   if (cached) return cached;
@@ -379,6 +434,28 @@ async function fetchBansLayer(bounds) {
       console.warn('  ERR ' + feed.name + ': ' + e.message);
     }
   }));
+
+  // Michigan has no working dev-API feed (see comments above), so fall back to
+  // scraping MDOT's public bulletin page directly. Wrapped the same way as
+  // every other feed above: a failure here just shows as one more ERROR row,
+  // it doesn't break the rest of the ban layer.
+  try {
+    const mi = await scrapeMichiganWeightBulletin();
+    feedResults['mi'] = {
+      name: 'Michigan MDOT (scraped bulletin)',
+      status: 'ok',
+      bans: [{
+        headline: mi.headline, desc: mi.desc, type: 'weight restriction',
+        road: 'Statewide — see description for affected routes', area: 'MI',
+        lat: 44.3148, lon: -85.6024 // representative statewide point; bulletins describe route boundaries, not a single spot
+      }]
+    };
+    console.log('  OK Michigan MDOT (scraped): ' + mi.headline);
+  } catch (e) {
+    feedResults['mi'] = { name: 'Michigan MDOT (scraped bulletin)', bans: [], status: 'error', err: e.message };
+    console.warn('  ERR Michigan MDOT (scraped): ' + e.message);
+  }
+
   const items = [];
   Object.keys(feedResults).forEach(function(key) {
     const r = feedResults[key];
@@ -392,6 +469,22 @@ async function fetchBansLayer(bounds) {
   const result = { items:items, feedStatus:feedResults };
   cacheSet(ck, result, 5*60*1000);
   return result;
+}
+
+async function fetchBansLayer(bounds) {
+  // Run the state DOT/511 feeds and the optional TomTom supplement in
+  // parallel, then merge — TomTom no longer replaces the state feeds (see
+  // fetchTomTomBans comment for why: it covers different data).
+  const results = await Promise.all([
+    fetchStateBanFeeds(),
+    fetchTomTomBans(bounds)
+  ]);
+  const stateResult = results[0];
+  const tomtomResult = results[1];
+  return {
+    items: stateResult.items.concat(tomtomResult.items),
+    feedStatus: Object.assign({}, stateResult.feedStatus, tomtomResult.feedStatus)
+  };
 }
 
 // DOT Cameras

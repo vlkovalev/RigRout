@@ -39,13 +39,14 @@ Without the server running, the page still loads and basic truck-stop/rest-area/
 | Feedback submission | Implemented. POSTs to `/api/feedback` on the local server (stored in `data/feedback.json`, gitignored). If the server is unreachable, feedback is queued in local storage and sent automatically once the server is detected. |
 | Offline / PWA support | Partial. The app shell (`rigrout.html`, CSS, marker-cluster JS) is cached by a service worker and installable to a home screen/desktop via `manifest.json`. Live data — road bans, DMS signs, conditions, feedback, hazard reports, map tiles, and routing — still requires a connection; none of that is cached, deliberately, so you never see stale restriction data believing it's current. |
 
-## Live road ban feeds — status and API keys
+## Live road ban feeds — status, API keys, and alternatives
 
 The 24 feeds in `BAN_FEEDS` (`rigrout-server.js` and the client-side fallback in `rigrout.html`) pull from each state/province's own DOT or 511 system. Most U.S. states run a shared white-label platform ("511/IBI Group"); several of those require a **free registered developer key**, rate-limited to a small number of calls per minute. As of this writing:
 
 **Working with no key required:**
 - BC DriveBC, Alberta 511, Ontario 511 (Canada)
 - NY DOT CommVehicle (ArcGIS feed)
+- Michigan (scraped — see "Michigan" below)
 
 **Confirmed to require a free developer key** — register, then set the matching environment variable before starting the server (e.g. `set BAN_KEY_ID=yourkey` on Windows, `export BAN_KEY_ID=yourkey` on macOS/Linux) and the server will append it automatically:
 
@@ -55,12 +56,16 @@ The 24 feeds in `BAN_FEEDS` (`rigrout-server.js` and the client-side fallback in
 | Wisconsin | `BAN_KEY_WI` | https://511wi.gov/developers/help |
 | New York (if adding the IBI feed) | `BAN_KEY_NY` | https://511ny.org/developers/help |
 | Utah | `BAN_KEY_UT` | https://prod-ut.ibi511.com/developers/doc |
+| Colorado | `BAN_KEY_CO` | https://www.cotrip.org/help/section/for-developers.html |
+| Ohio | `BAN_KEY_OH` | https://publicapi.ohgo.com/ — **note:** Ohio does not run the IBI511 platform at all; OHGO is a separate public API with its own request/response shape. The current `oh` BAN_FEEDS URL is the generic IBI511-style guess and will need its own parser branch (like NY's `arcgis` one) once someone wires this up properly, not just a key. |
 
-The remaining IBI511-platform feeds (`BAN_KEY_OR`, `BAN_KEY_MT`, `BAN_KEY_ND`, `BAN_KEY_SD`, `BAN_KEY_WY`, `BAN_KEY_MN`, `BAN_KEY_OH`, `BAN_KEY_IA`, `BAN_KEY_NE`, `BAN_KEY_MO`, `BAN_KEY_IL`, `BAN_KEY_TX`, `BAN_KEY_KS`, `BAN_KEY_CO`, `BAN_KEY_PA`) each have their own `/developers` registration page on that state's 511 site — not yet individually confirmed which require a key vs. which are just misconfigured/outdated URLs, since each state can theoretically customize the deployment. Set the corresponding env var once you've registered and confirmed a key is needed; feeds work unauthenticated if no key turns out to be required.
+The remaining feeds (`BAN_KEY_OR`, `BAN_KEY_MT`, `BAN_KEY_ND`, `BAN_KEY_SD`, `BAN_KEY_WY`, `BAN_KEY_MN`, `BAN_KEY_IA`, `BAN_KEY_NE`, `BAN_KEY_MO`, `BAN_KEY_IL`, `BAN_KEY_TX`, `BAN_KEY_KS`, `BAN_KEY_PA`) likely need the same free registration, but **the registration page URL pattern is not consistent across states** — Idaho/Utah/Wisconsin/NY use `/developers/doc` or `/developers/help`, Colorado uses `/help/section/for-developers.html` instead — so rather than guess a link that's probably wrong for some of these, check that state's own 511 homepage footer/help menu for "Developers" or "API" and register there. Set the corresponding env var once you've registered and confirmed a key is needed; feeds work unauthenticated if no key turns out to be required.
 
 **Known gaps, not fixable by a key:**
 - **Washington DOT** — does not run the IBI511 platform at all. WSDOT has its own separate "Traveler Information API" (`wsdot.wa.gov/traffic/api/`) with its own Access Code auth and different endpoint shapes. This feed is left in as a placeholder but will keep erroring until someone builds a dedicated WSDOT integration.
-- **Michigan** — `michigan511.org` no longer resolves (DNS failure). MDOT's current open data is GIS-based (ArcGIS/Socrata portals), structurally different from the events-feed shape the other states use, and no confirmed drop-in replacement has been found. This entry is commented out server-side and omitted client-side rather than left permanently broken.
+- **Michigan** — `michigan511.org` (the dev API) no longer resolves (DNS failure), so there's no key-based fix. Instead, `rigrout-server.js` scrapes MDOT's public Spring Weight Restriction Bulletin page (`mdotjboss.state.mi.us/APSWB/SWBHome.htm?bulletin=weight`) directly — no key needed, since it's the same page the public reads, not a gated developer API. This is more fragile than the JSON feeds (it depends on MDOT's page markup not changing) and only surfaces the single current statewide bulletin as one marker with the full bulletin text, not point-level events, since the bulletins describe route boundaries ("north of the US-2 and M-134 line") rather than lat/lon points. See `scrapeMichiganWeightBulletin()` in `rigrout-server.js`.
+
+**TomTom as a supplement:** if `TOMTOM_API_KEY` is set, `rigrout-server.js` also fetches TomTom's live traffic incident feed and merges it in alongside the state feeds (it no longer replaces them). TomTom covers accidents/roadwork/closures across all of North America with one key, but its incident categories don't include seasonal weight-restriction/frost-law postings, so it's a useful addition, not a substitute for the state feeds above.
 
 If a feed shows `Non-JSON` or `HTTP 404` in `/api/status` and isn't listed above, that state likely changed its API path or moved to a different platform since these URLs were written — worth re-checking that state's own `/developers` page before assuming it's a key issue.
 
