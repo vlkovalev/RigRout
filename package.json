@@ -1,0 +1,16 @@
+{
+  "name": "rigrout",
+  "version": "2.0.0",
+  "description": "RigRout - Commercial Route Intelligence. Truck stop / restriction data server plus a Leaflet-based route planning front end.",
+  "main": "rigrout-server.js",
+  "scripts": {
+    "start": "node rigrout-server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {}
+}

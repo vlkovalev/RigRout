@@ -23,9 +23,10 @@ const _cache = new Map();
 function cacheGet(k) { const v = _cache.get(k); return v && v.exp > Date.now() ? v.data : null; }
 function cacheSet(k, d, ttlMs) { _cache.set(k, { data: d, exp: Date.now() + ttlMs }); }
 
-// Server-side fetch (no CORS issues)
-function serverFetch(urlStr, opts) {
+// Server-side fetch (no CORS issues) — follows redirects, uses browser UA
+function serverFetch(urlStr, opts, _redirects) {
   opts = opts || {};
+  _redirects = _redirects || 0;
   return new Promise(function(resolve, reject) {
     const parsed  = new URL(urlStr);
     const lib     = parsed.protocol === 'https:' ? https : http;
@@ -34,10 +35,20 @@ function serverFetch(urlStr, opts) {
       port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
       path:     parsed.pathname + parsed.search,
       method:   opts.method || 'GET',
-      headers:  Object.assign({ 'User-Agent': 'RigRout/2.0' }, opts.headers || {}),
+      headers:  Object.assign({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+      }, opts.headers || {}),
     };
     const timer = setTimeout(function() { req.destroy(); reject(new Error('Timeout')); }, opts.timeout || 15000);
     const req = lib.request(reqOpts, function(res) {
+      // Follow redirects (301, 302, 307, 308)
+      if ((res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) && res.headers.location && _redirects < 5) {
+        clearTimeout(timer);
+        const nextUrl = res.headers.location.startsWith('http') ? res.headers.location : parsed.origin + res.headers.location;
+        return resolve(serverFetch(nextUrl, opts, _redirects + 1));
+      }
       let body = '';
       res.on('data', function(d) { body += d; });
       res.on('end', function() {
@@ -114,36 +125,40 @@ function normalizePOI(el, type) {
   };
 }
 
-// Road Bans - 18 feeds
+// Road Bans — confirmed-working or corrected URLs (audited May 2026)
+// ✓ = confirmed working  ✗ = removed (bad domain/blocked)  ~ = URL corrected
 const BAN_FEEDS = [
-  { key:'bc', name:'BC DriveBC',       url:'https://api.open511.gov.bc.ca/events?format=json', parser:'open511' },
-  { key:'ab', name:'Alberta 511',      url:'https://511.alberta.ca/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'sk', name:'Saskatchewan 511', url:'https://511sk.ca/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'mb', name:'Manitoba 511',     url:'https://511mb.ca/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'on', name:'Ontario 511',      url:'https://511on.ca/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'id', name:'Idaho 511',        url:'https://511.idaho.gov/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'mt', name:'Montana DOT',      url:'https://511.mt.gov/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'nd', name:'North Dakota 511', url:'https://www.511nd.gov/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'mn', name:'Minnesota 511',    url:'https://511mn.org/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'wi', name:'Wisconsin 511',    url:'https://511wi.gov/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'wa', name:'Washington DOT',   url:'https://511wa.gov/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'or', name:'Oregon TripCheck', url:'https://tripcheck.com/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'sd', name:'South Dakota 511', url:'https://511sd.com/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'wy', name:'Wyoming DOT',      url:'https://wyoroad.info/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'co', name:'Colorado COTRIP',  url:'https://cotrip.org/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'ut', name:'Utah UDOT',        url:'https://udottraffic.utah.gov/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'ia', name:'Iowa 511',         url:'https://511ia.org/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'ne', name:'Nebraska 511',     url:'https://511.nebraska.gov/api/v2/get/event?format=json', parser:'ibi511' },
-  // NY DOT CommVehicleDataFeed — ArcGIS REST (direct from NYS DOT, May 2025)
-  { key:'ny', name:'NY DOT CommVehicle', url:'https://gis.dot.ny.gov/hostingny/rest/services/CommVehicleDataFeed/MapServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=500', parser:'arcgis' },
-  // Major trucking corridor states
-  { key:'pa', name:'Pennsylvania 511', url:'https://www.511pa.com/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'oh', name:'Ohio 511',         url:'https://www.511.org/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'mi', name:'Michigan 511',     url:'https://mi511.org/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'tx', name:'Texas DriveTexas', url:'https://www.drivetexas.org/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'il', name:'Illinois 511',     url:'https://www.gettingaroundillinois.com/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'mo', name:'Missouri 511',     url:'https://traveler.modot.org/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'ks', name:'Kansas 511',       url:'https://www.kandrive.org/api/v2/get/event?format=json', parser:'ibi511' },
+  // ── Canada ────────────────────────────────────────────────────────────────────
+  { key:'bc', name:'BC DriveBC',       url:'https://api.open511.gov.bc.ca/events?format=json', parser:'open511' }, // ✓ Open511
+  { key:'ab', name:'Alberta 511',      url:'https://511.alberta.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ✓
+  { key:'on', name:'Ontario 511',      url:'https://511on.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ✓
+  // sk/mb: no public JSON API — removed
+  // ── US Northwest ──────────────────────────────────────────────────────────────
+  { key:'wa', name:'Washington DOT',   url:'https://wsdot.wa.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ corrected domain
+  { key:'or', name:'Oregon TripCheck', url:'https://www.tripcheck.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added www
+  { key:'id', name:'Idaho 511',        url:'https://511.idaho.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'mt', name:'Montana DOT',      url:'https://511mt.net/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ corrected domain
+  // ── US Northern Plains ────────────────────────────────────────────────────────
+  { key:'nd', name:'North Dakota 511', url:'https://511.nd.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ removed www
+  { key:'sd', name:'South Dakota 511', url:'https://sd511.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ corrected domain
+  { key:'wy', name:'Wyoming DOT',      url:'https://wyoroad.info/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'mn', name:'Minnesota 511',    url:'https://511mn.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'wi', name:'Wisconsin 511',    url:'https://511wi.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  // ── US Midwest ────────────────────────────────────────────────────────────────
+  { key:'mi', name:'Michigan 511',     url:'https://michigan511.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ corrected domain
+  { key:'oh', name:'Ohio OHGO',        url:'https://www.ohgo.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ OhGo is OH's current system
+  { key:'ia', name:'Iowa 511',         url:'https://511ia.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'ne', name:'Nebraska 511',     url:'https://511.nebraska.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'mo', name:'Missouri 511',     url:'https://traveler.modot.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'il', name:'Illinois 511',     url:'https://www.gettingaroundillinois.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  // ── US South / Great Plains ───────────────────────────────────────────────────
+  { key:'tx', name:'Texas DriveTexas', url:'https://www.drivetexas.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'ks', name:'Kansas 511',       url:'https://www.kandrive.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'co', name:'Colorado COTRIP',  url:'https://cotrip.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'ut', name:'Utah UDOT',        url:'https://udottraffic.utah.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  // ── US East ───────────────────────────────────────────────────────────────────
+  { key:'pa', name:'Pennsylvania 511', url:'https://www.511pa.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' }, // ~ added lang=en
+  { key:'ny', name:'NY DOT CommVehicle', url:'https://gis.dot.ny.gov/hostingny/rest/services/CommVehicleDataFeed/MapServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=500', parser:'arcgis' }, // ✓ ArcGIS
 ];
 const BAN_KW = ['weight restriction','load restriction','spring ban','frost law','seasonal',
   'overweight','weight limit','road ban','axle weight','weight reduced','load limit',
@@ -528,6 +543,16 @@ const server = http.createServer(function(req, res) {
   if (pathname==='/api/conditions') return handleConditions(req,res).catch(function(e){respond(res,500,{error:e.message});});
   if (pathname==='/api/cameras')    return handleLayers(req,res,Object.assign(parsed.query,{types:'cameras'})).catch(function(e){respond(res,500,{error:e.message});});
   if (pathname==='/api/cache/clear') { _cache.clear(); return respond(res,200,{cleared:true}); }
+  if (pathname==='/api/restart') {
+    respond(res,200,{restarting:true});
+    setTimeout(function(){
+      var cp=require('child_process');
+      cp.spawn(process.execPath,[__filename],{detached:true,stdio:'ignore',cwd:__dirname}).unref();
+      process.exit(0);
+    },200);
+    return;
+  }
+
   if (pathname==='/api/status')     return respond(res,200,{status:'ok',version:'2.0',feeds:BAN_FEEDS.length,cacheEntries:_cache.size,uptime:process.uptime()|0});
 
   if (pathname==='/api/route-audit') {

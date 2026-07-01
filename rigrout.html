@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RigRout — Commercial Route Intelligence</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.markercluster/1.5.3/MarkerCluster.css"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.markercluster/1.5.3/MarkerCluster.Default.css"/>
+<link rel="stylesheet" href="MarkerCluster.css"/>
+<link rel="stylesheet" href="MarkerCluster.Default.css"/>
 <style>
 :root {
   --pine:      #1A3C34;
@@ -788,7 +788,7 @@ select option{background:var(--bg)}
 </div><!-- /app -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+<script src="leaflet.markercluster.js"></script>
 <script>
 // ── Map init ──────────────────────────────────────────────────────────────────
 const map = L.map('map', { zoomControl: false }).setView([39.8, -98.6], 4);
@@ -1150,6 +1150,73 @@ const POI_ICONS = {
   border:   { color:'#C0392B', sym:'🛃' },
 };
 
+// ── Truck Stop Brand Logos ────────────────────────────────────────────────────
+// Maps name patterns → brand color + favicon domain for logo rendering
+const TRUCK_BRANDS = [
+  { re:/pilot|flying.?j/i,              color:'#C8102E', domain:'pilotflyingj.com',     abbr:'PFJ' },
+  { re:/love.?s/i,                       color:'#DF6D14', domain:'loves.com',            abbr:'L♥'  },
+  { re:/\bta\b|ta\s+travel|travelcenter/i, color:'#0D5FA5', domain:'tatravelcenters.com', abbr:'TA'  },
+  { re:/petro\s+stopping|petro\s+canada/i,color:'#CC0000', domain:'petro-canada.ca',     abbr:'PC'  },
+  { re:/kwik.?trip|kwik.?star/i,         color:'#E31837', domain:'kwiktrip.com',         abbr:'KT'  },
+  { re:/sapp.?bros/i,                    color:'#003366', domain:'sappbros.com',          abbr:'SB'  },
+  { re:/casey.?s/i,                      color:'#E31837', domain:'caseys.com',            abbr:'C\'s'},
+  { re:/iowa.?80/i,                      color:'#003087', domain:'iowa80truckstop.com',   abbr:'I80' },
+  { re:/ambest/i,                        color:'#0066CC', domain:'ambest.com',            abbr:'AB'  },
+  { re:/speedco/i,                       color:'#F5A623', domain:'speedco.com',           abbr:'SC'  },
+  { re:/roady.?s/i,                      color:'#2C7DA0', domain:'roadys.com',            abbr:'R'   },
+  { re:/jubitz/i,                        color:'#003366', domain:'jubitz.com',            abbr:'Jb'  },
+  { re:/bosselman/i,                     color:'#003366', domain:'bosselman.com',         abbr:'Bo'  },
+  { re:/husky/i,                         color:'#FF6B00', domain:'huskyenergy.com',       abbr:'Hk'  },
+  { re:/petro.?pass/i,                   color:'#CC0000', domain:'petro-canada.ca',       abbr:'PP'  },
+  { re:/circle.?k/i,                     color:'#CC0000', domain:'circlek.com',           abbr:'CK'  },
+  { re:/shell/i,                         color:'#E3000F', domain:'shell.com',             abbr:'Sh'  },
+  { re:/\bbp\b/i,                        color:'#009900', domain:'bp.com',                abbr:'BP'  },
+  { re:/chevron/i,                       color:'#D71E28', domain:'chevron.com',           abbr:'Ch'  },
+  { re:/exxon|mobil/i,                   color:'#CC0000', domain:'exxonmobil.com',        abbr:'Ex'  },
+  { re:/marathon/i,                      color:'#002D72', domain:'marathonbrand.com',     abbr:'Ma'  },
+  { re:/sunoco/i,                        color:'#0066CC', domain:'sunoco.com',            abbr:'Su'  },
+  { re:/cenex/i,                         color:'#D01012', domain:'cenex.com',             abbr:'Cx'  },
+  { re:/sinclair/i,                      color:'#00733E', domain:'sinclairoil.com',       abbr:'Si'  },
+  { re:/valero/i,                        color:'#006EB7', domain:'valero.com',            abbr:'Va'  },
+  { re:/speedway/i,                      color:'#E31837', domain:'speedway.com',          abbr:'Sw'  },
+  { re:/wawa/i,                          color:'#E31837', domain:'wawa.com',              abbr:'Wa'  },
+  { re:/sheetz/i,                        color:'#E31837', domain:'sheetz.com',            abbr:'Sh'  },
+  { re:/flying.?j/i,                     color:'#C8102E', domain:'pilotflyingj.com',     abbr:'FJ'  },
+];
+
+function detectBrand(name) {
+  if (!name) return null;
+  for (var i = 0; i < TRUCK_BRANDS.length; i++) {
+    if (TRUCK_BRANDS[i].re.test(name)) return TRUCK_BRANDS[i];
+  }
+  return null;
+}
+
+function makeStopIcon(name) {
+  var brand = detectBrand(name);
+  var color = brand ? brand.color : '#E8920A';
+  var logoHtml = '';
+  if (brand) {
+    // Google favicon service — free, no API key, loads brand logo at 32px
+    var logoUrl = 'https://www.google.com/s2/favicons?domain=' + brand.domain + '&sz=32';
+    logoHtml = '<img src="' + logoUrl + '" style="position:absolute;top:3px;left:50%;transform:translateX(-50%);width:15px;height:15px;border-radius:2px;image-rendering:auto" onerror="this.style.display=\'none\'" />';
+  } else {
+    logoHtml = '<text x="13" y="14" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="#fff">⛽</text>';
+  }
+  var svgPin = '<svg width="26" height="34" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M13 1C6.925 1 2 5.925 2 12c0 8.5 11 21 11 21S24 20.5 24 12c0-6.075-4.925-11-11-11z" fill="' + color + '" stroke="rgba(0,0,0,.4)" stroke-width="1.5"/>' +
+    (brand ? '' : logoHtml) +
+    '</svg>';
+  var html = brand
+    ? '<div style="position:relative;width:34px;height:44px">' + svgPin.replace('width="26" height="34"','width="34" height="44"') + logoHtml + '</div>'
+    : '<div style="position:relative;width:34px;height:44px">' +
+        '<svg width="34" height="44" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg">' +
+        '<path d="M13 1C6.925 1 2 5.925 2 12c0 8.5 11 21 11 21S24 20.5 24 12c0-6.075-4.925-11-11-11z" fill="' + color + '" stroke="rgba(0,0,0,.4)" stroke-width="1.5"/>' +
+        '<text x="13" y="14" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="#fff">⛽</text>' +
+        '</svg></div>';
+  return L.divIcon({ className:'', html:html, iconSize:[34,44], iconAnchor:[17,44], popupAnchor:[0,-44] });
+}
+
 // ── Overpass API — live POI fetch ─────────────────────────────────────────────
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 const OVERPASS_QUERIES = {
@@ -1232,15 +1299,36 @@ function renderPOILayer(type, pts) {
   var layer = poiLayers[type];
   if (!layer) return;
   layer.clearLayers();
-  var icon = makePinIcon((POI_ICONS[type]||{color:'#888'}).color, (POI_ICONS[type]||{sym:'?'}).sym);
+  var sharedIcon = (type !== 'stops')
+    ? makePinIcon((POI_ICONS[type]||{color:'#888'}).color, (POI_ICONS[type]||{sym:'?'}).sym)
+    : null;
   (pts||[]).forEach(function(p) {
     var sym = (POI_ICONS[type]||{sym:''}).sym;
-    var popup = '<div style="font-size:13px;min-width:160px">' +
-      '<div style="font-weight:700;font-size:15px;margin-bottom:4px">' + sym + ' ' + p.name + '</div>' +
-      (p.amen ? '<div style="color:#666;font-size:12px;margin-bottom:2px">' + p.amen + '</div>' : '') +
-      (p.opening ? '<div style="color:#888;font-size:11px">🕐 ' + p.opening + '</div>' : '') +
-      '</div>';
-    L.marker([p.lat, p.lon], { icon: icon }).bindPopup(popup, {maxWidth:280}).addTo(layer);
+    var icon = (type === 'stops') ? makeStopIcon(p.name) : sharedIcon;
+    var popup;
+    if (type === 'stops') {
+      var brand = detectBrand(p.name);
+      var brandColor = brand ? brand.color : '#E8920A';
+      var logoUrl = brand ? 'https://www.google.com/s2/favicons?domain=' + brand.domain + '&sz=32' : '';
+      var logoImg = brand
+        ? '<img src="' + logoUrl + '" style="width:20px;height:20px;border-radius:3px;vertical-align:middle;margin-right:6px;flex-shrink:0" onerror="this.style.display=\'none\'" />'
+        : '<span style="margin-right:6px">⛽</span>';
+      popup = '<div style="font-size:13px;min-width:180px">' +
+        '<div style="display:flex;align-items:center;padding:6px 8px;background:' + brandColor + ';border-radius:4px 4px 0 0;margin:-8px -8px 8px -8px">' +
+          logoImg +
+          '<span style="font-weight:700;font-size:14px;color:#fff">' + p.name + '</span>' +
+        '</div>' +
+        (p.amen ? '<div style="color:#555;font-size:12px;margin-bottom:4px">' + p.amen + '</div>' : '') +
+        (p.opening ? '<div style="color:#888;font-size:11px">🕐 ' + p.opening + '</div>' : '') +
+        '</div>';
+    } else {
+      popup = '<div style="font-size:13px;min-width:160px">' +
+        '<div style="font-weight:700;font-size:15px;margin-bottom:4px">' + sym + ' ' + p.name + '</div>' +
+        (p.amen ? '<div style="color:#666;font-size:12px;margin-bottom:2px">' + p.amen + '</div>' : '') +
+        (p.opening ? '<div style="color:#888;font-size:11px">🕐 ' + p.opening + '</div>' : '') +
+        '</div>';
+    }
+    L.marker([p.lat, p.lon], { icon: icon }).bindPopup(popup, {maxWidth:300}).addTo(layer);
   });
   map.addLayer(layer);
 }
@@ -2186,28 +2274,60 @@ const CORS_PROXIES = [
   function(u){ return 'https://thingproxy.freeboard.io/fetch/' + u; }
 ];
 const BAN_FEEDS = [
+  // Canada
   { key:'bc', name:'BC DriveBC',       region:'BC', color:'#E05252', direct:true,
     url:'https://api.open511.gov.bc.ca/events?format=json', parser:'open511' },
   { key:'ab', name:'Alberta 511',      region:'AB', color:'#F5A623', direct:false,
-    url:'https://511.alberta.ca/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'sk', name:'Saskatchewan 511', region:'SK', color:'#F5A623', direct:false,
-    url:'https://511sk.ca/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'mb', name:'Manitoba 511',     region:'MB', color:'#F5A623', direct:false,
-    url:'https://511mb.ca/api/v2/get/event?format=json', parser:'ibi511' },
+    url:'https://511.alberta.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
   { key:'on', name:'Ontario 511',      region:'ON', color:'#F5A623', direct:false,
-    url:'https://511on.ca/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'id', name:'Idaho 511',        region:'ID', color:'#2C7DA0', direct:false,
-    url:'https://511.idaho.gov/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'mt', name:'Montana DOT',      region:'MT', color:'#2C7DA0', direct:false,
-    url:'https://511.mt.gov/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'nd', name:'North Dakota 511', region:'ND', color:'#2C7DA0', direct:false,
-    url:'https://www.511nd.gov/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'mn', name:'Minnesota 511',    region:'MN', color:'#2C7DA0', direct:false,
-    url:'https://511mn.org/api/v2/get/event?format=json', parser:'ibi511' },
-  { key:'wi', name:'Wisconsin 511',    region:'WI', color:'#2C7DA0', direct:false,
-    url:'https://511wi.gov/api/v2/get/event?format=json', parser:'ibi511' },
+    url:'https://511on.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  // US Northwest
   { key:'wa', name:'Washington DOT',   region:'WA', color:'#2C7DA0', direct:false,
-    url:'https://511wa.gov/api/v2/get/event?format=json', parser:'ibi511' }
+    url:'https://wsdot.wa.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'or', name:'Oregon TripCheck', region:'OR', color:'#2C7DA0', direct:false,
+    url:'https://www.tripcheck.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'id', name:'Idaho 511',        region:'ID', color:'#2C7DA0', direct:false,
+    url:'https://511.idaho.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'mt', name:'Montana DOT',      region:'MT', color:'#2C7DA0', direct:false,
+    url:'https://511mt.net/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  // US Northern Plains
+  { key:'nd', name:'North Dakota 511', region:'ND', color:'#2C7DA0', direct:false,
+    url:'https://511.nd.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'sd', name:'South Dakota 511', region:'SD', color:'#2C7DA0', direct:false,
+    url:'https://sd511.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'wy', name:'Wyoming DOT',      region:'WY', color:'#2C7DA0', direct:false,
+    url:'https://wyoroad.info/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'mn', name:'Minnesota 511',    region:'MN', color:'#2C7DA0', direct:false,
+    url:'https://511mn.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'wi', name:'Wisconsin 511',    region:'WI', color:'#2C7DA0', direct:false,
+    url:'https://511wi.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  // US Midwest
+  { key:'mi', name:'Michigan 511',     region:'MI', color:'#2C7DA0', direct:false,
+    url:'https://michigan511.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'oh', name:'Ohio OHGO',        region:'OH', color:'#2C7DA0', direct:false,
+    url:'https://www.ohgo.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'ia', name:'Iowa 511',         region:'IA', color:'#2C7DA0', direct:false,
+    url:'https://511ia.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'ne', name:'Nebraska 511',     region:'NE', color:'#2C7DA0', direct:false,
+    url:'https://511.nebraska.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'mo', name:'Missouri 511',     region:'MO', color:'#2C7DA0', direct:false,
+    url:'https://traveler.modot.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'il', name:'Illinois 511',     region:'IL', color:'#2C7DA0', direct:false,
+    url:'https://www.gettingaroundillinois.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  // US South / Great Plains
+  { key:'tx', name:'Texas DriveTexas', region:'TX', color:'#2C7DA0', direct:false,
+    url:'https://www.drivetexas.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'ks', name:'Kansas 511',       region:'KS', color:'#2C7DA0', direct:false,
+    url:'https://www.kandrive.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'co', name:'Colorado COTRIP',  region:'CO', color:'#2C7DA0', direct:false,
+    url:'https://cotrip.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'ut', name:'Utah UDOT',        region:'UT', color:'#2C7DA0', direct:false,
+    url:'https://udottraffic.utah.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  // US East
+  { key:'pa', name:'Pennsylvania 511', region:'PA', color:'#2C7DA0', direct:false,
+    url:'https://www.511pa.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
+  { key:'ny', name:'NY DOT CommVehicle',region:'NY',color:'#2C7DA0', direct:true,
+    url:'https://gis.dot.ny.gov/hostingny/rest/services/CommVehicleDataFeed/MapServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=500', parser:'arcgis' },
 ];
 const BAN_KEYWORDS = ['weight restriction','load restriction','spring ban','frost law',
   'seasonal','overweight','weight limit','road ban','axle weight','weight reduced',
@@ -2284,21 +2404,30 @@ async function fetchRoadBans() {
       var feedStatus = (d.layers&&d.layers._banFeedStatus)||{};
       // Render source status from server response
       if (sourcesEl) {
-        var canada = ['bc','ab','sk','mb','on'];
-        var us     = ['id','mt','nd','mn','wi','wa'];
+        var canada  = ['bc','ab','on'];
+        var usNW    = ['wa','or','id','mt'];
+        var usPlain = ['nd','sd','wy','mn','wi'];
+        var usMid   = ['mi','oh','ia','ne','mo','il'];
+        var usSouth = ['tx','ks','co','ut','pa','ny'];
         function sRow(key) {
           var fs = feedStatus[key]||{};
           var ct = fs.status==='ok' ? (fs.bans&&fs.bans.length ? fs.bans.length+' ⚠':'✓') : (fs.status==='error'?'✕':'?');
           var cl = fs.status==='ok' ? (fs.bans&&fs.bans.length?'active':'ok') : 'err';
           var nm = fs.name||key.toUpperCase();
-          var dot = {bc:'#E05252',ab:'#F5A623',sk:'#F5A623',mb:'#F5A623',on:'#F5A623',id:'#2C7DA0',mt:'#2C7DA0',nd:'#2C7DA0',mn:'#2C7DA0',wi:'#2C7DA0',wa:'#2C7DA0'}[key]||'#888';
+          var dot = {bc:'#E05252',ab:'#F5A623',on:'#F5A623'}[key]||'#2C7DA0';
           return '<div class="ban-src-row" title="'+(fs.err||nm)+'">'+'<div class="ban-src-dot" style="background:'+dot+'"></div><span class="ban-src-name">'+nm+'</span><span class="ban-src-count '+cl+'">'+ct+'</span></div>';
         }
         sourcesEl.innerHTML =
           '<div style="font-size:10px;font-weight:700;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.7px">Canada</div>'+
           '<div class="ban-src-grid">'+canada.map(sRow).join('')+'</div>'+
-          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">United States</div>'+
-          '<div class="ban-src-grid">'+us.map(sRow).join('')+'</div>';
+          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Northwest</div>'+
+          '<div class="ban-src-grid">'+usNW.map(sRow).join('')+'</div>'+
+          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Northern Plains</div>'+
+          '<div class="ban-src-grid">'+usPlain.map(sRow).join('')+'</div>'+
+          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Midwest</div>'+
+          '<div class="ban-src-grid">'+usMid.map(sRow).join('')+'</div>'+
+          '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">South / East</div>'+
+          '<div class="ban-src-grid">'+usSouth.map(sRow).join('')+'</div>';
       }
       if (totalEl) { if (allBans.length) { totalEl.textContent=allBans.length+' active'; totalEl.style.display=''; } else totalEl.style.display='none'; }
       // Convert to renderBans format
