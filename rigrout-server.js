@@ -689,7 +689,8 @@ const server = http.createServer(function(req, res) {
   if (!fs.existsSync(filePath))   return respond(res,404,{error:'Not found'});
   const ext  = path.extname(filePath).toLowerCase();
   const mime = {'.html':'text/html','.js':'application/javascript','.css':'text/css',
-    '.json':'application/json','.png':'image/png','.ico':'image/x-icon'}[ext]||'application/octet-stream';
+    '.json':'application/json','.png':'image/png','.ico':'image/x-icon',
+    '.svg':'image/svg+xml','.webmanifest':'application/manifest+json'}[ext]||'application/octet-stream';
   res.writeHead(200,{'Content-Type':mime,'Access-Control-Allow-Origin':'*'});
   fs.createReadStream(filePath).pipe(res);
 });
