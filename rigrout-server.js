@@ -10,6 +10,10 @@
  *   GET  /api/conditions   road conditions (colored segments)
  *   GET  /api/status
  *   GET  /api/cache/clear
+ *   POST /api/feedback     body:{category,message,email}   — persisted to data/feedback.json
+ *   GET  /api/feedback     — list stored feedback (local review only)
+ *   POST /api/incidents    body:{type,note,lat,lon}         — shared hazard report, persisted to data/incidents.json
+ *   GET  /api/incidents    — active (non-expired) hazard reports, visible to every client hitting this server
  */
 const http  = require('http');
 const https = require('https');
@@ -22,6 +26,70 @@ const PORT  = 3001;
 const _cache = new Map();
 function cacheGet(k) { const v = _cache.get(k); return v && v.exp > Date.now() ? v.data : null; }
 function cacheSet(k, d, ttlMs) { _cache.set(k, { data: d, exp: Date.now() + ttlMs }); }
+
+// ── Simple file-backed storage (feedback + shared incident reports) ──────────
+// Not a database — fine for single-instance/personal-scale use. If this server
+// is ever run multi-instance behind a load balancer, move this to a real store.
+const DATA_DIR = path.join(__dirname, 'data');
+try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
+function readJSON(file, fallback) {
+  try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, file), 'utf8')); }
+  catch (e) { return fallback; }
+}
+function writeJSON(file, data) {
+  try { fs.writeFileSync(path.join(DATA_DIR, file), JSON.stringify(data, null, 2)); }
+  catch (e) { console.warn('  Write failed:', file, e.message); }
+}
+
+function handleFeedbackPost(req, res, body) {
+  const msg = String(body.message || '').trim();
+  if (!msg) return respond(res, 400, { error: 'message required' });
+  const list = readJSON('feedback.json', []);
+  const entry = {
+    id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    ts: Date.now(),
+    category: body.category || 'general',
+    message: msg.slice(0, 4000),
+    email: String(body.email || '').trim().slice(0, 200),
+  };
+  list.unshift(entry);
+  if (list.length > 1000) list.length = 1000;
+  writeJSON('feedback.json', list);
+  console.log('  Feedback received [' + entry.category + ']: ' + msg.slice(0, 80));
+  respond(res, 200, { ok: true, id: entry.id });
+}
+function handleFeedbackGet(req, res) {
+  respond(res, 200, { feedback: readJSON('feedback.json', []) });
+}
+
+const INCIDENT_TTL_MS = 4 * 3600 * 1000;
+function activeIncidents() {
+  const list = readJSON('incidents.json', []);
+  const fresh = list.filter(function (i) { return Date.now() - i.ts < INCIDENT_TTL_MS; });
+  if (fresh.length !== list.length) writeJSON('incidents.json', fresh);
+  return fresh;
+}
+function handleIncidentPost(req, res, body) {
+  const type = String(body.type || '').trim();
+  if (!type) return respond(res, 400, { error: 'type required' });
+  const list = readJSON('incidents.json', []);
+  const entry = {
+    id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    ts: Date.now(),
+    type: type,
+    note: String(body.note || '').trim().slice(0, 500),
+    lat: typeof body.lat === 'number' ? body.lat : null,
+    lon: typeof body.lon === 'number' ? body.lon : null,
+    status: 'active',
+  };
+  list.unshift(entry);
+  writeJSON('incidents.json', list.slice(0, 500));
+  console.log('  Hazard reported [' + type + ']');
+  respond(res, 200, { ok: true, id: entry.id });
+}
+function handleIncidentGet(req, res) {
+  respond(res, 200, { incidents: activeIncidents() });
+}
 
 // Server-side fetch (no CORS issues) — follows redirects, uses browser UA
 function serverFetch(urlStr, opts, _redirects) {
@@ -566,6 +634,35 @@ const server = http.createServer(function(req, res) {
     });
     return;
   }
+
+  if (pathname==='/api/feedback') {
+    if (req.method==='GET') return handleFeedbackGet(req,res);
+    if (req.method!=='POST') return respond(res,405,{error:'POST required'});
+    let body='';
+    req.on('data',function(d){body+=d;});
+    req.on('end',function(){
+      try { handleFeedbackPost(req,res,JSON.parse(body||'{}')); }
+      catch(e){ respond(res,400,{error:'Bad JSON'}); }
+    });
+    return;
+  }
+
+  if (pathname==='/api/incidents') {
+    if (req.method==='GET') return handleIncidentGet(req,res);
+    if (req.method!=='POST') return respond(res,405,{error:'POST required'});
+    let body='';
+    req.on('data',function(d){body+=d;});
+    req.on('end',function(){
+      try { handleIncidentPost(req,res,JSON.parse(body||'{}')); }
+      catch(e){ respond(res,400,{error:'Bad JSON'}); }
+    });
+    return;
+  }
+
+  // Never serve the raw data directory as static files — it holds feedback
+  // (may include an email) and hazard reports. Only the /api endpoints above
+  // may read/write it.
+  if (pathname==='/data' || pathname.indexOf('/data/') === 0) return respond(res,403,{error:'Forbidden'});
 
   // Static files
   const base = path.join(__dirname);

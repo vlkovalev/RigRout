@@ -417,7 +417,7 @@ select option{background:var(--bg)}
       <div class="fb-head-row">
         <div>
           <div class="modal-logo" style="font-size:16px">🚨 Report a Hazard</div>
-          <div class="modal-subtitle">Help fellow drivers on this corridor</div>
+          <div class="modal-subtitle" id="inc-modal-subtitle">Help fellow drivers on this corridor</div>
         </div>
         <button class="fb-close" onclick="closeIncident()">×</button>
       </div>
@@ -890,9 +890,17 @@ async function detectServer() {
     ind.style.background = serverAvailable ? '#3DB87A' : '#888';
     ind.title = serverAvailable ? 'RigRout server running — server-side data active' : 'No local server — using direct APIs';
   }
+  if (serverAvailable) {
+    flushFeedbackQueue();
+    fetchSharedIncidents();
+  }
   return serverAvailable;
 }
 detectServer();
+// Re-check periodically — if the local server starts mid-session, pick it up
+// instead of staying stuck treating everything as offline for the whole visit.
+setInterval(detectServer, 45000);
+setInterval(fetchSharedIncidents, 90000);
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let originCoord = null, destCoord = null, loadStatus = 'loaded';
@@ -1587,6 +1595,10 @@ function removeIncident(id) {
 }
 function openIncident() {
   document.getElementById('incident-overlay').classList.remove('hidden');
+  const sub = document.getElementById('inc-modal-subtitle');
+  if (sub) sub.textContent = serverAvailable
+    ? 'Help fellow drivers on this corridor'
+    : 'No server connection — this will only save to your own device';
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(pos => {
       const el = document.getElementById('inc-location');
@@ -1597,7 +1609,7 @@ function openIncident() {
 function closeIncident() {
   document.getElementById('incident-overlay').classList.add('hidden');
 }
-function submitIncident() {
+async function submitIncident() {
   const type = document.getElementById('inc-type')?.value;
   const note = document.getElementById('inc-desc')?.value?.trim();
   const locStr = document.getElementById('inc-location')?.value?.trim();
@@ -1607,25 +1619,66 @@ function submitIncident() {
     const parts = locStr.split(',');
     if (parts.length === 2) { lat = parseFloat(parts[0]); lon = parseFloat(parts[1]); }
   }
-  incidents.unshift({ id: Date.now(), ts: Date.now(), type, note, lat, lon });
+
+  let shared = false;
+  if (serverAvailable) {
+    try {
+      const r = await fetch(API_BASE + '/api/incidents', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ type, note, lat, lon }),
+        signal: AbortSignal.timeout(8000)
+      });
+      shared = r.ok;
+    } catch(e) { shared = false; }
+  }
+
+  // Keep a local copy too so it shows immediately on this device even before
+  // the next shared-incident refresh (fetchSharedIncidents runs every 90s).
+  incidents.unshift({ id: Date.now(), ts: Date.now(), type, note, lat, lon, shared });
   if (incidents.length > 50) incidents = incidents.slice(0, 50);
   localStorage.setItem('rigrout_incidents', JSON.stringify(incidents));
   renderIncidents();
-  const form = document.getElementById('inc-form-body');
-  const foot = document.getElementById('inc-foot');
+
+  const form   = document.getElementById('inc-form-body');
+  const foot   = document.getElementById('inc-foot');
   const thanks = document.getElementById('inc-thanks');
+  const thanksText = thanks ? thanks.querySelector('p') : null;
+  const thanksSub  = thanks ? thanks.querySelector('small') : null;
+  if (thanksText) thanksText.textContent = shared ? 'Hazard reported — visible to other drivers on this server.' : 'Hazard saved on this device only.';
+  if (thanksSub)  thanksSub.textContent  = shared
+    ? 'Stay safe out there. Report expires in 4 hours.'
+    : 'No RigRout server connection right now, so this isn\'t shared with other drivers yet — it still shows on your map for 4 hours.';
+
   if (form) form.style.display = 'none';
   if (foot) foot.style.display = 'none';
   if (thanks) thanks.style.display = 'flex';
+  setStatus(shared ? '🚨 Hazard reported — visible to other drivers for 4 hours' : '🚨 Hazard saved on this device — not shared (no server connection)');
   setTimeout(() => {
     closeIncident();
     if (form)   form.style.display = '';
     if (foot)   foot.style.display = '';
     if (thanks) thanks.style.display = 'none';
+    if (thanksText) thanksText.textContent = 'Hazard reported — marker added to map.';
+    if (thanksSub)  thanksSub.textContent  = 'Stay safe out there. Report expires in 4 hours.';
     if (document.getElementById('inc-desc')) document.getElementById('inc-desc').value = '';
     if (document.getElementById('inc-location')) document.getElementById('inc-location').value = '';
-  }, 2000);
-  setStatus('🚨 Hazard reported — visible for 4 hours');
+  }, shared ? 2000 : 3600);
+}
+
+// ── Shared hazard reports (fetched from the local server, if running) ────────
+async function fetchSharedIncidents() {
+  if (!serverAvailable) return;
+  try {
+    const r = await fetch(API_BASE + '/api/incidents', { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return;
+    const d = await r.json();
+    const shared = (d.incidents || []).map(function(i) {
+      return { id: 'srv_' + i.id, ts: i.ts, type: i.type, note: i.note, lat: i.lat, lon: i.lon, status: i.status, shared: true };
+    });
+    const localOnly = incidents.filter(function(i) { return !String(i.id).startsWith('srv_'); });
+    incidents = shared.concat(localOnly);
+    renderIncidents();
+  } catch(e) { console.warn('Shared incidents fetch:', e.message); }
 }
 
 
@@ -1815,13 +1868,75 @@ function openFeedback() {
 function closeFeedback() {
   document.getElementById('feedback-overlay').classList.add('hidden');
 }
-function submitFeedback() {
-  const msg = document.getElementById('fb-msg')?.value?.trim();
+async function submitFeedback() {
+  const cat   = document.getElementById('fb-cat')?.value || 'general';
+  const msg   = document.getElementById('fb-msg')?.value?.trim();
+  const email = document.getElementById('fb-email')?.value?.trim();
   if (!msg) { alert('Please enter a message'); return; }
-  // No backend — just acknowledge
-  closeFeedback();
-  setStatus('💬 Thanks for your feedback!');
-  if (document.getElementById('fb-msg')) document.getElementById('fb-msg').value = '';
+
+  let sent = false;
+  if (serverAvailable) {
+    try {
+      const r = await fetch(API_BASE + '/api/feedback', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ category: cat, message: msg, email: email }),
+        signal: AbortSignal.timeout(8000)
+      });
+      sent = r.ok;
+    } catch(e) { sent = false; }
+  }
+
+  if (!sent) {
+    // Don't silently drop it — queue it and send automatically once the
+    // server is reachable again (see flushFeedbackQueue()).
+    try {
+      const q = JSON.parse(localStorage.getItem('rigrout_feedback_queue') || '[]');
+      q.push({ ts: Date.now(), category: cat, message: msg, email: email });
+      localStorage.setItem('rigrout_feedback_queue', JSON.stringify(q));
+    } catch(e) {}
+  }
+
+  const form   = document.getElementById('fb-form-body');
+  const foot   = document.getElementById('fb-foot');
+  const thanks = document.getElementById('fb-thanks');
+  const thanksText = thanks ? thanks.querySelector('p') : null;
+  const thanksSub  = thanks ? thanks.querySelector('small') : null;
+  if (thanksText) thanksText.textContent = sent ? 'Feedback received. Thank you!' : 'Server unreachable — feedback saved on this device.';
+  if (thanksSub)  thanksSub.textContent  = sent
+    ? 'Your input helps make RigRout better for every driver on the road.'
+    : 'It will send automatically the next time the RigRout server is reachable.';
+
+  if (form) form.style.display = 'none';
+  if (foot) foot.style.display = 'none';
+  if (thanks) thanks.style.display = 'flex';
+  setStatus(sent ? '💬 Feedback sent. Thanks!' : '💬 Feedback saved locally — will send when server is reachable');
+  setTimeout(() => {
+    closeFeedback();
+    if (form)   form.style.display = '';
+    if (foot)   foot.style.display = '';
+    if (thanks) thanks.style.display = 'none';
+    if (thanksText) thanksText.textContent = 'Feedback received. Thank you!';
+    if (thanksSub)  thanksSub.textContent  = 'Your input helps make RigRout better for every driver on the road.';
+    if (document.getElementById('fb-msg')) document.getElementById('fb-msg').value = '';
+  }, sent ? 2000 : 3200);
+}
+async function flushFeedbackQueue() {
+  if (!serverAvailable) return;
+  let q = [];
+  try { q = JSON.parse(localStorage.getItem('rigrout_feedback_queue') || '[]'); } catch(e) { return; }
+  if (!q.length) return;
+  const remaining = [];
+  for (const item of q) {
+    try {
+      const r = await fetch(API_BASE + '/api/feedback', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(item), signal: AbortSignal.timeout(8000)
+      });
+      if (!r.ok) remaining.push(item);
+    } catch(e) { remaining.push(item); }
+  }
+  localStorage.setItem('rigrout_feedback_queue', JSON.stringify(remaining));
+  if (remaining.length !== q.length) console.log('Flushed ' + (q.length - remaining.length) + ' queued feedback item(s) to server');
 }
 
 // ── Route share ───────────────────────────────────────────────────────────────
@@ -3014,6 +3129,7 @@ loadFromURLParams();
 checkDisclaimer();
 initPOILayers();
 renderIncidents();
+fetchSharedIncidents();
 fetchRoadBans();
 loadProfile();
 updateHazmatBadge();
