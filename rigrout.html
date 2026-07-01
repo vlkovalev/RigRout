@@ -479,7 +479,7 @@ select option{background:var(--bg)}
   <button class="hbtn-fb" onclick="openIncident()">🚨 Report</button>
   <button class="hbtn-fb" onclick="openFeedback()">💬 Feedback</button>
   <button class="hbtn" onclick="togglePanel()">⚡ Route Audit <span id="risk-count-badge" class="risk-cnt" style="display:none"></span></button>
-  <div id="hazmat-badge" onclick="document.getElementById('p-hazmat').focus()" title="HazMat active — click to edit">⚠ HAZMAT</div>
+  <div id="hazmat-badge" onclick="document.getElementById('p-hazmat').focus()" title="HazMat active — click to edit" role="button" tabindex="0" aria-label="HazMat active — click to edit HazMat setting">⚠ HAZMAT</div>
   <div class="badge">v2 · OSM Data</div>
   <div id="server-dot" title="Checking server…" role="status" aria-label="Local data server status: checking" style="width:8px;height:8px;border-radius:50%;background:#888;flex-shrink:0;margin-left:4px;cursor:help" onclick="detectServer()"></div>
 </div>
@@ -609,20 +609,20 @@ select option{background:var(--bg)}
   <div class="sec">
     <div class="sec-title">Show Along Route</div>
     <div class="poi-filters">
-      <div class="ftag" id="ftag-stops"     onclick="togglePOI('stops',this)"     title="Truck Stops &amp; Fuel">⛽</div>
-      <div class="ftag" id="ftag-cardlock"  onclick="togglePOI('cardlock',this)"  title="Cardlocks">💳</div>
-      <div class="ftag" id="ftag-rest"      onclick="togglePOI('rest',this)"      title="Rest Areas &amp; Pull-offs">🅿</div>
-      <div class="ftag"    id="ftag-weigh"     onclick="togglePOI('weigh',this)"     title="Weigh Stations">⚖️</div>
-      <div class="ftag"    id="ftag-repair"    onclick="togglePOI('repair',this)"    title="Truck Repair">🔧</div>
-      <div class="ftag"    id="ftag-bans"      onclick="togglePOI('bans',this)"      title="Road Bans">🚫</div>
-      <div class="ftag"    id="ftag-ev"        onclick="togglePOI('ev',this)"        title="EV / Electric Charging">⚡</div>
-      <div class="ftag"    id="ftag-wx"        onclick="togglePOI('wx',this)"        title="Weather">🌤</div>
-      <div class="ftag on" id="ftag-incidents" onclick="togglePOI('incidents',this)" title="Incidents">🚨</div>
-      <div class="ftag"    id="ftag-custom"    onclick="togglePOI('custom',this)"    title="My Custom Stops">📌</div>
-      <div class="ftag"    id="ftag-border"    onclick="togglePOI('border',this)"    title="Border Crossings">🛃</div>
-      <div class="ftag"    id="ftag-cameras"   onclick="togglePOI('cameras',this)"   title="DOT Cameras">📷</div>
-      <div class="ftag"    id="ftag-restrict"  onclick="togglePOI('restrict',this)"  title="Truck Restrictions (height/weight)">⛔</div>
-      <div class="ftag"    id="ftag-radar"     onclick="togglePOI('radar',this)"     title="Weather Radar">🌧</div>
+      <div class="ftag" id="ftag-stops"     onclick="togglePOI('stops',this)"     title="Truck Stops &amp; Fuel" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle truck stops and fuel layer">⛽</div>
+      <div class="ftag" id="ftag-cardlock"  onclick="togglePOI('cardlock',this)"  title="Cardlocks" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle cardlocks layer">💳</div>
+      <div class="ftag" id="ftag-rest"      onclick="togglePOI('rest',this)"      title="Rest Areas &amp; Pull-offs" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle rest areas and pull-offs layer">🅿</div>
+      <div class="ftag"    id="ftag-weigh"     onclick="togglePOI('weigh',this)"     title="Weigh Stations" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle weigh stations layer">⚖️</div>
+      <div class="ftag"    id="ftag-repair"    onclick="togglePOI('repair',this)"    title="Truck Repair" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle truck repair layer">🔧</div>
+      <div class="ftag"    id="ftag-bans"      onclick="togglePOI('bans',this)"      title="Road Bans" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle road bans layer">🚫</div>
+      <div class="ftag"    id="ftag-ev"        onclick="togglePOI('ev',this)"        title="EV / Electric Charging" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle EV charging layer">⚡</div>
+      <div class="ftag"    id="ftag-wx"        onclick="togglePOI('wx',this)"        title="Weather" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle weather layer">🌤</div>
+      <div class="ftag on" id="ftag-incidents" onclick="togglePOI('incidents',this)" title="Incidents" role="button" tabindex="0" aria-pressed="true" aria-label="Toggle incidents layer">🚨</div>
+      <div class="ftag"    id="ftag-custom"    onclick="togglePOI('custom',this)"    title="My Custom Stops" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle my custom stops layer">📌</div>
+      <div class="ftag"    id="ftag-border"    onclick="togglePOI('border',this)"    title="Border Crossings" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle border crossings layer">🛃</div>
+      <div class="ftag"    id="ftag-cameras"   onclick="togglePOI('cameras',this)"   title="DOT Cameras" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle DOT cameras layer">📷</div>
+      <div class="ftag"    id="ftag-restrict"  onclick="togglePOI('restrict',this)"  title="Truck Restrictions (height/weight)" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle truck height and weight restrictions layer">⛔</div>
+      <div class="ftag"    id="ftag-radar"     onclick="togglePOI('radar',this)"     title="Weather Radar" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle weather radar layer">🌧</div>
     </div>
   </div>
 
@@ -1361,6 +1361,7 @@ let weatherMapLayer = L.layerGroup().addTo(map);
 function togglePOI(type, el) {
   poiVisible[type] = !poiVisible[type];
   el.classList.toggle('on', poiVisible[type]);
+  el.setAttribute('aria-pressed', poiVisible[type] ? 'true' : 'false');
 
   if (type === 'bans') {
     poiVisible[type] ? map.addLayer(poiLayers.bans) : map.removeLayer(poiLayers.bans);
@@ -2717,7 +2718,7 @@ function clearAllLayers() {
 // Unified toggle called from the layers panel checkboxes
 function togglePOIPanel(type, on) {
   var ftag = document.getElementById('ftag-'+type);
-  if (ftag) { ftag.classList.toggle('on', on); }
+  if (ftag) { ftag.classList.toggle('on', on); ftag.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   poiVisible[type] = on;
   var cb = document.getElementById('lyr-'+type);
   if (cb) cb.checked = on;
@@ -3148,6 +3149,21 @@ updateHazmatBadge();
   var incCb = document.getElementById('lyr-incidents');
   if (incCb) incCb.checked = true;
 })();
+
+// Keyboard support for the div-based toggle controls (POI layer icons, HazMat
+// badge) — these use role="button"/tabindex so they're focusable, but divs
+// don't get native Enter/Space activation the way <button> does, so we wire
+// it up manually via delegation instead of one listener per element.
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var el = e.target;
+  if (!el) return;
+  var isFtag    = el.classList && el.classList.contains('ftag');
+  var isHazmat  = el.id === 'hazmat-badge';
+  if (!isFtag && !isHazmat) return;
+  e.preventDefault();
+  el.click();
+});
 </script>
 </body>
 </html>
