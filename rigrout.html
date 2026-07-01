@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RigRout — Truck Route Planning &amp; Restriction Data</title>
+<meta name="description" content="Route planner for commercial truckers: multi-stop routing, truck stop/rest area/weigh station locations, and live state and provincial road ban, DMS sign, and road condition feeds. Informational tool — always verify restrictions with local authorities before dispatch.">
+<meta property="og:title" content="RigRout — Truck Route Planning &amp; Restriction Data">
+<meta property="og:description" content="Multi-stop route planning with truck stop, rest area, and weigh station layers, plus live road ban and road condition feeds for commercial drivers.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%231A3C34'/%3E%3Ctext x='50' y='68' font-size='58' font-family='sans-serif' font-weight='700' fill='%23F5A623' text-anchor='middle'%3ER%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="MarkerCluster.css"/>
 <link rel="stylesheet" href="MarkerCluster.Default.css"/>
@@ -374,7 +379,7 @@ select option{background:var(--bg)}
           <div class="modal-logo" style="font-size:16px">Rig<em>Rout</em> Feedback</div>
           <div class="modal-subtitle">Help us improve</div>
         </div>
-        <button class="fb-close" onclick="closeFeedback()">×</button>
+        <button class="fb-close" onclick="closeFeedback()" aria-label="Close feedback form">×</button>
       </div>
     </div>
     <div class="modal-body" id="fb-form-body">
@@ -419,7 +424,7 @@ select option{background:var(--bg)}
           <div class="modal-logo" style="font-size:16px">🚨 Report a Hazard</div>
           <div class="modal-subtitle" id="inc-modal-subtitle">Help fellow drivers on this corridor</div>
         </div>
-        <button class="fb-close" onclick="closeIncident()">×</button>
+        <button class="fb-close" onclick="closeIncident()" aria-label="Close hazard report form">×</button>
       </div>
     </div>
     <div class="modal-body" id="inc-form-body">
@@ -476,7 +481,7 @@ select option{background:var(--bg)}
   <button class="hbtn" onclick="togglePanel()">⚡ Route Audit <span id="risk-count-badge" class="risk-cnt" style="display:none"></span></button>
   <div id="hazmat-badge" onclick="document.getElementById('p-hazmat').focus()" title="HazMat active — click to edit">⚠ HAZMAT</div>
   <div class="badge">v2 · OSM Data</div>
-  <div id="server-dot" title="Checking server…" style="width:8px;height:8px;border-radius:50%;background:#888;flex-shrink:0;margin-left:4px;cursor:help" onclick="detectServer()"></div>
+  <div id="server-dot" title="Checking server…" role="status" aria-label="Local data server status: checking" style="width:8px;height:8px;border-radius:50%;background:#888;flex-shrink:0;margin-left:4px;cursor:help" onclick="detectServer()"></div>
 </div>
 
 <div id="body">
@@ -662,7 +667,7 @@ select option{background:var(--bg)}
       <input type="text" id="cs-note" placeholder="Notes (optional)" style="margin-bottom:4px">
       <div style="display:flex;gap:4px">
         <button onclick="saveCustomStop()" style="flex:1;background:var(--blue);border:none;color:#fff;border-radius:4px;padding:5px;font-size:11px;cursor:pointer">Use Map Pin 📍</button>
-        <button onclick="closeAddStop()" style="background:var(--surf2);border:1px solid var(--border);color:var(--dim);border-radius:4px;padding:5px 8px;font-size:11px;cursor:pointer">✕</button>
+        <button onclick="closeAddStop()" aria-label="Cancel adding stop" style="background:var(--surf2);border:1px solid var(--border);color:var(--dim);border-radius:4px;padding:5px 8px;font-size:11px;cursor:pointer">✕</button>
       </div>
       <div style="font-size:9px;color:var(--dim);margin-top:4px">Click the map to place the stop, then click "Use Map Pin"</div>
     </div>
@@ -764,7 +769,7 @@ select option{background:var(--bg)}
 <div id="panel">
   <div class="ph">
     <span class="ph-title">⚡ Route Audit</span>
-    <button class="ph-x" onclick="closePanel()">×</button>
+    <button class="ph-x" onclick="closePanel()" aria-label="Close route audit panel">×</button>
   </div>
   <div class="panel-body">
     <div class="stats" id="stats"></div>
@@ -1037,7 +1042,7 @@ function renderViaStops() {
         '<input type="text" id="via-inp-' + s.id + '" placeholder="Stop ' + (idx+1) + ': city, address, or zip" autocomplete="off" style="padding-left:28px">' +
         '<div class="sugg" id="via-sugg-' + s.id + '"></div>' +
       '</div>' +
-      '<button class="via-remove-btn" onclick="removeViaStop(' + s.id + ')" title="Remove stop">✕</button>' +
+      '<button class="via-remove-btn" onclick="removeViaStop(' + s.id + ')" title="Remove stop" aria-label="Remove this stop">✕</button>' +
     '</div>';
   }).join('');
   // Restore existing text and set up geocoding for each field
@@ -1501,8 +1506,8 @@ function renderCustomStops() {
   el.innerHTML = stops.map(function(s) {
     return '<div style="display:flex;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid var(--border)">' +
       '<span style="font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (s.note||'') + '">📌 ' + s.name + '</span>' +
-      '<button onclick="map.setView([' + s.lat + ',' + s.lon + '],14)" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:10px;padding:0 3px" title="Zoom to">🎯</button>' +
-      '<button onclick="deleteCustomStop(' + s.id + ')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px;padding:0 3px" title="Remove">✕</button>' +
+      '<button onclick="map.setView([' + s.lat + ',' + s.lon + '],14)" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:10px;padding:0 3px" title="Zoom to" aria-label="Zoom to this stop">🎯</button>' +
+      '<button onclick="deleteCustomStop(' + s.id + ')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px;padding:0 3px" title="Remove" aria-label="Remove this custom stop">✕</button>' +
       '</div>';
   }).join('');
 }
