@@ -9,7 +9,8 @@
  *   GET  /api/signs        DMS/message signs
  *   GET  /api/conditions   road conditions (colored segments)
  *   GET  /api/status
- *   GET  /api/cache/clear
+ *   GET  /api/cache/clear   — local requests only (127.0.0.1/::1)
+ *   GET  /api/restart       — local requests only (127.0.0.1/::1)
  *   POST /api/feedback     body:{category,message,email}   — persisted to data/feedback.json
  *   GET  /api/feedback     — list stored feedback (local review only)
  *   POST /api/incidents    body:{type,note,lat,lon}         — shared hazard report, persisted to data/incidents.json
@@ -596,6 +597,19 @@ function respond(res, code, obj) {
   res.end(body);
 }
 
+// ── Local-only guard ──────────────────────────────────────────────────────────
+// /api/restart and /api/cache/clear are operator tools, not app features — the
+// page itself never calls them. Because CORS is wide open above (needed for the
+// data endpoints), without this check any website could POST/GET these from a
+// visitor's browser and restart or blank the cache on someone's machine. This
+// checks the actual TCP peer address, which the CORS header can't spoof: a
+// request only looks like it came from 127.0.0.1 if it truly opened a socket
+// to that address, which a remote origin cannot do.
+function isLocalRequest(req) {
+  const addr = req.socket && req.socket.remoteAddress;
+  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+}
+
 // HTTP Server
 const server = http.createServer(function(req, res) {
   const parsed   = url.parse(req.url, true);
@@ -610,8 +624,12 @@ const server = http.createServer(function(req, res) {
   if (pathname==='/api/signs')      return handleSigns(req,res).catch(function(e){respond(res,500,{error:e.message});});
   if (pathname==='/api/conditions') return handleConditions(req,res).catch(function(e){respond(res,500,{error:e.message});});
   if (pathname==='/api/cameras')    return handleLayers(req,res,Object.assign(parsed.query,{types:'cameras'})).catch(function(e){respond(res,500,{error:e.message});});
-  if (pathname==='/api/cache/clear') { _cache.clear(); return respond(res,200,{cleared:true}); }
+  if (pathname==='/api/cache/clear') {
+    if (!isLocalRequest(req)) return respond(res,403,{error:'forbidden'});
+    _cache.clear(); return respond(res,200,{cleared:true});
+  }
   if (pathname==='/api/restart') {
+    if (!isLocalRequest(req)) return respond(res,403,{error:'forbidden'});
     respond(res,200,{restarting:true});
     setTimeout(function(){
       var cp=require('child_process');
