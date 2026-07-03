@@ -1314,29 +1314,33 @@ const TRUCK_BRANDS = [
   { re:/petro\s+stopping|petro\s+canada/i,color:'#CC0000', domain:'petro-canada.ca',     abbr:'PC'  },
   { re:/kwik.?trip|kwik.?star/i,         color:'#E31837', domain:'kwiktrip.com',         abbr:'KT'  },
   { re:/sapp.?bros/i,                    color:'#003366', domain:'sappbros.com',          abbr:'SB'  },
-  { re:/casey.?s/i,                      color:'#E31837', domain:'caseys.com',            abbr:'C\'s'},
-  { re:/iowa.?80/i,                      color:'#003087', domain:'iowa80truckstop.com',   abbr:'I80' },
+  { re:/casey.?s/i,                      color:'#E31837', domain:'caseys.com',            abbr:'CS'  },
+  { re:/iowa.?80/i,                      color:'#003087', domain:'iowa80truckstop.com',   abbr:'I80'},
   { re:/ambest/i,                        color:'#0066CC', domain:'ambest.com',            abbr:'AB'  },
   { re:/speedco/i,                       color:'#F5A623', domain:'speedco.com',           abbr:'SC'  },
-  { re:/roady.?s/i,                      color:'#2C7DA0', domain:'roadys.com',            abbr:'R'   },
-  { re:/jubitz/i,                        color:'#003366', domain:'jubitz.com',            abbr:'Jb'  },
-  { re:/bosselman/i,                     color:'#003366', domain:'bosselman.com',         abbr:'Bo'  },
-  { re:/husky/i,                         color:'#FF6B00', domain:'huskyenergy.com',       abbr:'Hk'  },
+  { re:/roady.?s/i,                      color:'#2C7DA0', domain:'roadys.com',            abbr:'RY'  },
+  { re:/jubitz/i,                        color:'#003366', domain:'jubitz.com',            abbr:'JZ'  },
+  { re:/bosselman/i,                     color:'#003366', domain:'bosselman.com',         abbr:'BO'  },
+  { re:/husky/i,                         color:'#FF6B00', domain:'huskyenergy.com',       abbr:'HK'  },
   { re:/petro.?pass/i,                   color:'#CC0000', domain:'petro-canada.ca',       abbr:'PP'  },
   { re:/circle.?k/i,                     color:'#CC0000', domain:'circlek.com',           abbr:'CK'  },
-  { re:/shell/i,                         color:'#E3000F', domain:'shell.com',             abbr:'Sh'  },
+  { re:/shell/i,                         color:'#E3000F', domain:'shell.com',             abbr:'SH'  },
   { re:/\bbp\b/i,                        color:'#009900', domain:'bp.com',                abbr:'BP'  },
-  { re:/chevron/i,                       color:'#D71E28', domain:'chevron.com',           abbr:'Ch'  },
-  { re:/exxon|mobil/i,                   color:'#CC0000', domain:'exxonmobil.com',        abbr:'Ex'  },
-  { re:/marathon/i,                      color:'#002D72', domain:'marathonbrand.com',     abbr:'Ma'  },
-  { re:/sunoco/i,                        color:'#0066CC', domain:'sunoco.com',            abbr:'Su'  },
-  { re:/cenex/i,                         color:'#D01012', domain:'cenex.com',             abbr:'Cx'  },
-  { re:/sinclair/i,                      color:'#00733E', domain:'sinclairoil.com',       abbr:'Si'  },
-  { re:/valero/i,                        color:'#006EB7', domain:'valero.com',            abbr:'Va'  },
-  { re:/speedway/i,                      color:'#E31837', domain:'speedway.com',          abbr:'Sw'  },
-  { re:/wawa/i,                          color:'#E31837', domain:'wawa.com',              abbr:'Wa'  },
-  { re:/sheetz/i,                        color:'#E31837', domain:'sheetz.com',            abbr:'Sh'  },
+  { re:/chevron/i,                       color:'#D71E28', domain:'chevron.com',           abbr:'CV'  },
+  { re:/exxon|mobil/i,                   color:'#CC0000', domain:'exxonmobil.com',        abbr:'EM'  },
+  { re:/marathon/i,                      color:'#002D72', domain:'marathonbrand.com',     abbr:'MR'  },
+  { re:/sunoco/i,                        color:'#0066CC', domain:'sunoco.com',            abbr:'SU'  },
+  { re:/cenex/i,                         color:'#D01012', domain:'cenex.com',             abbr:'CX'  },
+  { re:/sinclair/i,                      color:'#00733E', domain:'sinclairoil.com',       abbr:'SI'  },
+  { re:/valero/i,                        color:'#006EB7', domain:'valero.com',            abbr:'VL'  },
+  { re:/speedway/i,                      color:'#E31837', domain:'speedway.com',          abbr:'SW'  },
+  { re:/wawa/i,                          color:'#E31837', domain:'wawa.com',              abbr:'WW'  },
+  { re:/sheetz/i,                        color:'#E31837', domain:'sheetz.com',            abbr:'SZ'  },
   { re:/flying.?j/i,                     color:'#C8102E', domain:'pilotflyingj.com',     abbr:'FJ'  },
+  { re:/conoco|phillips|conocophillips/i, color:'#CC0000', domain:'conocophillips.com',   abbr:'CP'  },
+  { re:/frontier/i,                      color:'#003366', domain:'frontiertravelstop.com',abbr:'FR'},
+  { re:/pilot/i,                         color:'#C8102E', domain:'pilotflyingj.com',     abbr:'PLT'},
+  { re:/flying j|flyingj/i,              color:'#C8102E', domain:'pilotflyingj.com',     abbr:'FLJ'},
 ];
 
 function detectBrand(name) {
@@ -1363,12 +1367,16 @@ const LOGO_DEV_KEY = '';
 function brandLogoImgError(img) {
   var stage = img.dataset.stage;
   if (stage === '0' && img.dataset.favicon) {
+    // Try Google favicon next
     img.dataset.stage = '1';
     img.src = img.dataset.favicon;
   } else {
+    // Fall back to colored badge with initials
     img.style.display = 'none';
     var fallback = img.nextElementSibling;
-    if (fallback) fallback.style.display = 'flex';
+    if (fallback && fallback.tagName === 'DIV') {
+      fallback.style.display = 'flex';
+    }
   }
 }
 
@@ -1383,13 +1391,13 @@ function makeStopIcon(name) {
     badgeInner =
       '<img src="' + firstUrl + '" data-stage="' + startStage + '" data-favicon="' + faviconUrl + '" onerror="brandLogoImgError(this)" ' +
         'style="width:20px;height:20px;object-fit:contain;border-radius:4px" alt="" />' +
-      '<div style="display:none;width:20px;height:20px;border-radius:4px;background:' + color + ';color:#fff;font-size:8px;font-weight:700;align-items:center;justify-content:center;line-height:1">' + brand.abbr + '</div>';
+      '<div style="display:flex;width:20px;height:20px;border-radius:4px;background:' + color + ';color:#fff;font-size:8px;font-weight:800;align-items:center;justify-content:center;line-height:1;flex-shrink:0">' + brand.abbr + '</div>';
   } else {
-    badgeInner = '<span style="font-size:15px;line-height:1">⛽</span>';
+    badgeInner = '<span style="font-size:16px;line-height:1;display:block">⛽</span>';
   }
   var html =
     '<div style="position:relative;width:34px;height:44px">' +
-      '<div style="position:absolute;top:0;left:1.5px;width:31px;height:31px;border-radius:50%;background:#fff;border:3px solid ' + color + ';box-shadow:0 2px 6px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;overflow:hidden">' +
+      '<div style="position:absolute;top:0;left:1.5px;width:31px;height:31px;border-radius:50%;background:#fff;border:3px solid ' + color + ';box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;overflow:hidden;font-weight:700">' +
         badgeInner +
       '</div>' +
       '<div style="position:absolute;top:27px;left:10.5px;width:0;height:0;border-left:6.5px solid transparent;border-right:6.5px solid transparent;border-top:9px solid ' + color + '"></div>' +
@@ -2533,6 +2541,19 @@ function renderFavorites() {
   }).join('');
 }
 
+// Escapes text before it's dropped into innerHTML or an HTML attribute. Needed
+// anywhere we render text that came from a third-party feed (state DOT APIs,
+// scraped bulletins, upstream error bodies) rather than text we authored —
+// those aren't guaranteed to be free of ", <, >, or & and will otherwise break
+// out of the markup. Real-world case that motivated this: a wrong-platform
+// feed URL (e.g. Wyoming's, hitting a 404) returns an error body containing
+// stray '">' characters; without escaping, that closed the title="" attribute
+// early and spilled raw text out of the row, blowing past the panel's layout.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ── Live Road Ban Feeds ────────────────────────────────────────────────────────
 // This used to also carry a full client-side fallback (a BAN_FEEDS list plus
 // a 4-proxy CORS-bypass chain through corsproxy.io/allorigins.win/thingproxy)
@@ -2574,7 +2595,7 @@ async function fetchRoadBans() {
           var cl = fs.status==='ok' ? 'active' : 'err';
           sourcesEl.innerHTML =
             '<div style="font-size:10px;font-weight:700;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.7px">Unified Feed</div>'+
-            '<div class="ban-src-row" title="'+(fs.err||'TomTom Live Traffic')+'">'+
+            '<div class="ban-src-row" title="'+escapeHtml(fs.err||'TomTom Live Traffic')+'">'+
             '<div class="ban-src-dot" style="background:#10B981"></div>'+
             '<span class="ban-src-name">TomTom Live Traffic</span>'+
             '<span class="ban-src-count '+cl+'">'+ct+'</span>'+
@@ -2591,7 +2612,7 @@ async function fetchRoadBans() {
             var cl = fs.status==='ok' ? (fs.bans&&fs.bans.length?'active':'ok') : 'err';
             var nm = fs.name||key.toUpperCase();
             var dot = {bc:'#E05252',ab:'#F5A623',on:'#F5A623'}[key]||'#2C7DA0';
-            return '<div class="ban-src-row" title="'+(fs.err||nm)+'">'+'<div class="ban-src-dot" style="background:'+dot+'"></div><span class="ban-src-name">'+nm+'</span><span class="ban-src-count '+cl+'">'+ct+'</span></div>';
+            return '<div class="ban-src-row" title="'+escapeHtml(fs.err||nm)+'">'+'<div class="ban-src-dot" style="background:'+dot+'"></div><span class="ban-src-name">'+escapeHtml(nm)+'</span><span class="ban-src-count '+cl+'">'+ct+'</span></div>';
           }
           sourcesEl.innerHTML =
             '<div style="font-size:10px;font-weight:700;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.7px">Canada</div>'+
@@ -2649,15 +2670,15 @@ function renderBans(bans) {
     var group = byFeed[feedName];
     var cards = group.items.map(function(b) {
       return '<div style="padding:5px 8px;margin-bottom:3px;background:var(--surf2);border-radius:4px;font-size:11px">' +
-        '<div style="font-weight:700;color:var(--text)">'+(b.headline||b.type)+'</div>' +
-        (b.road?'<div style="color:var(--dim);font-size:10px;margin-top:1px">📍 '+b.road+(b.area?', '+b.area:'')+'</div>':'') +
-        (b.desc?'<div style="color:var(--dim);font-size:10px;margin-top:2px">'+b.desc.slice(0,140)+(b.desc.length>140?'…':'')+'</div>':'') +
+        '<div style="font-weight:700;color:var(--text)">'+escapeHtml(b.headline||b.type)+'</div>' +
+        (b.road?'<div style="color:var(--dim);font-size:10px;margin-top:1px">📍 '+escapeHtml(b.road)+(b.area?', '+escapeHtml(b.area):'')+'</div>':'') +
+        (b.desc?'<div style="color:var(--dim);font-size:10px;margin-top:2px">'+escapeHtml(b.desc.slice(0,140))+(b.desc.length>140?'…':'')+'</div>':'') +
         '</div>';
     }).join('');
     return '<div style="border-left:3px solid '+group.color+';padding:0 0 4px 8px;margin-bottom:8px">' +
       '<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:5px">' +
         '<div style="width:8px;height:8px;border-radius:50%;background:'+group.color+';flex-shrink:0"></div>' +
-        feedName +
+        escapeHtml(feedName) +
         '<span style="color:var(--dim);font-weight:400;font-size:10px">('+group.items.length+')</span>' +
       '</div>' +
       cards +
