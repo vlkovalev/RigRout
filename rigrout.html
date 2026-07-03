@@ -1390,8 +1390,9 @@ function makeStopIcon(name) {
     var startStage = LOGO_DEV_KEY ? '0' : '1';
     badgeInner =
       '<img src="' + firstUrl + '" data-stage="' + startStage + '" data-favicon="' + faviconUrl + '" onerror="brandLogoImgError(this)" ' +
+        'onload="if(this.naturalWidth<2){brandLogoImgError(this)}" ' +
         'style="width:20px;height:20px;object-fit:contain;border-radius:4px" alt="" />' +
-      '<div style="display:flex;width:20px;height:20px;border-radius:4px;background:' + color + ';color:#fff;font-size:8px;font-weight:800;align-items:center;justify-content:center;line-height:1;flex-shrink:0">' + brand.abbr + '</div>';
+      '<div style="display:none;width:20px;height:20px;border-radius:4px;background:' + color + ';color:#fff;font-size:8px;font-weight:800;align-items:center;justify-content:center;line-height:1;flex-shrink:0">' + brand.abbr + '</div>';
   } else {
     badgeInner = '<span style="font-size:16px;line-height:1;display:block">⛽</span>';
   }
