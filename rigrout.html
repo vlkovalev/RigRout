@@ -178,16 +178,23 @@ select option{background:var(--bg);color:var(--text);padding:8px}
 /* ── Road Bans ── */
 .ban-feed-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.03)}
 .ban-feed-row:last-child{border-bottom:none}
-.ban-src-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-top:8px}
-.ban-src-row{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:12px;background:rgba(255,255,255,.02);border-radius:4px;transition:all .15s}
+.ban-src-grid{display:grid;grid-template-columns:1fr;gap:3px;margin-top:8px}
+.ban-src-row{display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;background:rgba(255,255,255,.02);border-radius:4px;transition:all .15s}
 .ban-src-row:hover{background:rgba(255,255,255,.05)}
 .ban-src-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;box-shadow:0 0 4px rgba(0,0,0,.4)}
-.ban-src-name{color:var(--dim);font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ban-src-count{font-size:12px;font-weight:800;min-width:32px;text-align:right;letter-spacing:.3px}
+.ban-src-name{color:var(--dim);font-size:11px;flex:1;overflow:visible;text-overflow:clip;white-space:normal;line-height:1.35;word-break:break-word}
+.ban-src-count{font-size:12px;font-weight:800;min-width:32px;text-align:right;letter-spacing:.3px;flex-shrink:0;white-space:nowrap}
 .ban-src-count.active{color:var(--red);text-shadow:0 0 8px rgba(224,82,82,.3)}
 .ban-src-count.ok{color:var(--green)}
 .ban-src-count.loading{color:var(--blue);animation:pulse 1.2s infinite}
 .ban-src-count.err{color:#F08080;font-size:10px}
+.ban-region{margin-bottom:2px}
+.ban-region summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;padding:5px 2px;user-select:none;border-radius:4px}
+.ban-region summary::-webkit-details-marker{display:none}
+.ban-region summary:hover{color:var(--text);background:rgba(255,255,255,.03)}
+.ban-region summary .ban-region-chevron{transition:transform .15s;flex-shrink:0;font-size:9px}
+.ban-region[open] summary .ban-region-chevron{transform:rotate(90deg)}
+.ban-region summary .ban-region-tally{margin-left:auto;font-weight:400;color:var(--dim);text-transform:none;letter-spacing:0}
 .ban-feed-name{font-size:11px;color:var(--amber);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
 .ban-status{font-size:10px;padding:3px 8px;border-radius:4px;font-weight:700;letter-spacing:.3px;display:inline-block}
 .ban-status.live{background:rgba(61,184,122,.2);color:#6DDBA5;border:1px solid rgba(61,184,122,.4)}
@@ -2567,6 +2574,14 @@ function escapeHtml(s) {
 // server-side feed list is now the single source of truth — see
 // rigrout-server.js's BAN_FEEDS and README's "Live road ban feeds" section.
 
+// Tracks each ban-region accordion's open/closed state across refreshes —
+// sourcesEl.innerHTML gets fully rebuilt on every fetchRoadBans() call (new
+// data in, old DOM out), so without this the accordions would silently pop
+// back open every time the user hits Refresh, undoing anything they'd
+// collapsed. Defaults to open (undefined/true) so nothing is hidden on first
+// load; ontoggle on each <details> keeps this in sync as the user clicks.
+var banRegionOpen = {};
+
 async function fetchRoadBans() {
   var sourcesEl = document.getElementById('ban-sources');
   var listEl    = document.getElementById('ban-feed-list');
@@ -2615,17 +2630,28 @@ async function fetchRoadBans() {
             var dot = {bc:'#E05252',ab:'#F5A623',on:'#F5A623'}[key]||'#2C7DA0';
             return '<div class="ban-src-row" title="'+escapeHtml(fs.err||nm)+'">'+'<div class="ban-src-dot" style="background:'+dot+'"></div><span class="ban-src-name">'+escapeHtml(nm)+'</span><span class="ban-src-count '+cl+'">'+ct+'</span></div>';
           }
+          // Each region is a native <details> accordion so the list stays
+          // scannable without every state's row on screen at once. Left open
+          // by default (nothing hidden on first load) — a region only stays
+          // collapsed if the user collapses it themselves, since <details>
+          // preserves open/closed state across innerHTML rebuilds is NOT
+          // true (rebuilding innerHTML always resets to the open attribute
+          // below), so a per-region open/closed memory is tracked separately
+          // and re-applied here on every refresh.
+          function regionBlock(id, title, keys) {
+            var okCount = keys.filter(function(k){ var fs=feedStatus[k]||{}; return fs.status==='ok'; }).length;
+            var isOpen = banRegionOpen[id] !== false; // default true
+            return '<details class="ban-region" id="ban-region-'+id+'" ontoggle="banRegionOpen[\''+id+'\']=this.open" '+(isOpen?'open':'')+'>'+
+              '<summary><span class="ban-region-chevron">▸</span>'+title+'<span class="ban-region-tally">'+okCount+'/'+keys.length+'</span></summary>'+
+              '<div class="ban-src-grid">'+keys.map(sRow).join('')+'</div>'+
+            '</details>';
+          }
           sourcesEl.innerHTML =
-            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.7px">Canada</div>'+
-            '<div class="ban-src-grid">'+canada.map(sRow).join('')+'</div>'+
-            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Northwest</div>'+
-            '<div class="ban-src-grid">'+usNW.map(sRow).join('')+'</div>'+
-            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Northern Plains</div>'+
-            '<div class="ban-src-grid">'+usPlain.map(sRow).join('')+'</div>'+
-            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">Midwest</div>'+
-            '<div class="ban-src-grid">'+usMid.map(sRow).join('')+'</div>'+
-            '<div style="font-size:10px;font-weight:700;color:var(--dim);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.7px">South / East</div>'+
-            '<div class="ban-src-grid">'+usSouth.map(sRow).join('')+'</div>';
+            regionBlock('canada','Canada',canada) +
+            regionBlock('nw','Northwest',usNW) +
+            regionBlock('plains','Northern Plains',usPlain) +
+            regionBlock('mid','Midwest',usMid) +
+            regionBlock('south','South / East',usSouth);
         }
       }
       if (totalEl) { if (allBans.length) { totalEl.textContent=allBans.length+' active'; totalEl.style.display=''; } else totalEl.style.display='none'; }
