@@ -55,27 +55,29 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 
 /* ── Sidebar ── */
 #sidebar{width:320px;background:var(--surf);border-right:1px solid var(--border);overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
-#sidebar::-webkit-scrollbar{width:3px}
+#sidebar::-webkit-scrollbar{width:4px}
 #sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+#sidebar::-webkit-scrollbar-thumb:hover{background:var(--pine-lt)}
 
-.sec{padding:10px 14px;border-bottom:1px solid var(--border)}
-.sec-title{font-size:13px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.9px;margin-bottom:10px}
+.sec{padding:16px 14px;border-bottom:1px solid var(--border);transition:all .15s}
+.sec:hover{background:rgba(255,255,255,.01)}
+.sec-title{font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:1.1px;margin-bottom:12px;display:flex;align-items:center;gap:6px}
 
 /* ── Inputs ── */
-.field{margin-bottom:8px}
-.field label{display:block;font-size:12px;font-weight:600;color:var(--dim);margin-bottom:5px}
-input[type=text],input[type=number],select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:6px;font-size:15px;min-height:44px;outline:none;transition:border .15s}
-input:focus,select:focus{border-color:var(--blue)}
-select option{background:var(--bg)}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:11px;font-weight:700;color:var(--amber);margin-bottom:6px;text-transform:uppercase;letter-spacing:.6px}
+input[type=text],input[type=number],select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:11px 12px;border-radius:6px;font-size:14px;min-height:42px;outline:none;transition:all .2s;font-weight:500}
+input:focus,select:focus{border-color:var(--blue);background:rgba(44,125,160,.06);box-shadow:0 0 0 3px rgba(44,125,160,.1)}
+select option{background:var(--bg);color:var(--text);padding:8px}
 .route-wrap{position:relative}
 .route-wrap input{padding-left:28px}
-.rdot{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%}
+.rdot{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.5)}
 .origin-dot{background:var(--green)}
 .dest-dot{background:var(--red)}
-.sugg{display:none;position:absolute;z-index:999;left:0;right:0;background:var(--bg);border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;max-height:140px;overflow-y:auto}
-.sugg-item{padding:9px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--border)}
+.sugg{display:none;position:absolute;z-index:999;left:0;right:0;background:var(--bg);border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;max-height:140px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.sugg-item{padding:10px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border);transition:all .1s}
 .sugg-item:last-child{border-bottom:none}
-.sugg-item:hover{background:var(--surf2)}
+.sugg-item:hover{background:var(--pine-lt);color:#fff}
 
 /* ── Buttons ── */
 .btn{width:100%;min-height:44px;padding:10px 14px;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;justify-content:center}
@@ -883,11 +885,11 @@ const TILE_LAYERS = {
   street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution:'© <a href="https://www.openstreetmap.org/copyright">OSM contributors</a>', maxZoom:21, maxNativeZoom:19 }),
   satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution:'© Esri — Earthstar Geographics', maxZoom:21, maxNativeZoom:18 }),
+    attribution:'© Esri — Earthstar Geographics', maxZoom:21, maxNativeZoom:17 }),
   terrain: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
     attribution:'© <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)', maxZoom:21, maxNativeZoom:17 }),
   hybrid: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution:'© Esri', maxZoom:21, maxNativeZoom:18, opacity:1 }),
+    attribution:'© Esri', maxZoom:21, maxNativeZoom:17, opacity:1 }),
 };
 // Hybrid labels overlay (roads/names on top of satellite)
 const HYBRID_LABELS = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', { maxZoom:21, maxNativeZoom:19, opacity:.85 });
@@ -963,6 +965,11 @@ const poiLayers = {
 // ── Server API ───────────────────────────────────────────────────────────────
 const API_BASE = 'http://localhost:3001';
 let serverAvailable = false;
+// Captures the in-flight detection promise so other init-time calls (like
+// fetchRoadBans below) can await the *result* of the same check instead of
+// racing it — reading serverAvailable synchronously before this resolves
+// always sees the initial `false`, even when the server is actually up.
+let serverDetectPromise = null;
 async function detectServer() {
   try {
     const r = await fetch(API_BASE+'/api/status', { signal:AbortSignal.timeout(1500) });
@@ -979,10 +986,10 @@ async function detectServer() {
   }
   return serverAvailable;
 }
-detectServer();
+serverDetectPromise = detectServer();
 // Re-check periodically — if the local server starts mid-session, pick it up
 // instead of staying stuck treating everything as offline for the whole visit.
-setInterval(detectServer, 45000);
+setInterval(function(){ serverDetectPromise = detectServer(); }, 45000);
 setInterval(fetchSharedIncidents, 90000);
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -1283,29 +1290,54 @@ function detectBrand(name) {
   return null;
 }
 
+// Optional: a free logo.dev publishable key (sign up at https://logo.dev) gives
+// sharper, real brand logos as the first choice. Clearbit's old free logo API
+// (logo.clearbit.com) shut down for good in December 2025, so there is no
+// keyless "sharp logo" source left — leave this blank to skip straight to the
+// Google favicon service, which is still free/keyless but capped at low-res.
+const LOGO_DEV_KEY = '';
+
+// ── Gas station pin: circle badge ───────────────────────────────────────────
+// Three-layer logo fallback so a pin is never a broken image:
+//   1) logo.dev (only if LOGO_DEV_KEY is set — sharpest, real logo)
+//   2) Google favicon service (free, no key, but low-res / sometimes generic)
+//   3) A hand-drawn colored badge with the brand's initials (always crisp,
+//      never depends on a network request succeeding)
+function brandLogoImgError(img) {
+  var stage = img.dataset.stage;
+  if (stage === '0' && img.dataset.favicon) {
+    img.dataset.stage = '1';
+    img.src = img.dataset.favicon;
+  } else {
+    img.style.display = 'none';
+    var fallback = img.nextElementSibling;
+    if (fallback) fallback.style.display = 'flex';
+  }
+}
+
 function makeStopIcon(name) {
   var brand = detectBrand(name);
   var color = brand ? brand.color : '#E8920A';
-  var logoHtml = '';
+  var badgeInner;
   if (brand) {
-    // Google favicon service — free, no API key, loads brand logo at 32px
-    var logoUrl = 'https://www.google.com/s2/favicons?domain=' + brand.domain + '&sz=32';
-    logoHtml = '<img src="' + logoUrl + '" style="position:absolute;top:3px;left:50%;transform:translateX(-50%);width:15px;height:15px;border-radius:2px;image-rendering:auto" onerror="this.style.display=\'none\'" />';
+    var faviconUrl = 'https://www.google.com/s2/favicons?domain=' + brand.domain + '&sz=64';
+    var firstUrl = LOGO_DEV_KEY ? ('https://img.logo.dev/' + brand.domain + '?token=' + LOGO_DEV_KEY + '&size=64') : faviconUrl;
+    var startStage = LOGO_DEV_KEY ? '0' : '1';
+    badgeInner =
+      '<img src="' + firstUrl + '" data-stage="' + startStage + '" data-favicon="' + faviconUrl + '" onerror="brandLogoImgError(this)" ' +
+        'style="width:20px;height:20px;object-fit:contain;border-radius:4px" alt="" />' +
+      '<div style="display:none;width:20px;height:20px;border-radius:4px;background:' + color + ';color:#fff;font-size:8px;font-weight:700;align-items:center;justify-content:center;line-height:1">' + brand.abbr + '</div>';
   } else {
-    logoHtml = '<text x="13" y="14" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="#fff">⛽</text>';
+    badgeInner = '<span style="font-size:15px;line-height:1">⛽</span>';
   }
-  var svgPin = '<svg width="26" height="34" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg">' +
-    '<path d="M13 1C6.925 1 2 5.925 2 12c0 8.5 11 21 11 21S24 20.5 24 12c0-6.075-4.925-11-11-11z" fill="' + color + '" stroke="rgba(0,0,0,.4)" stroke-width="1.5"/>' +
-    (brand ? '' : logoHtml) +
-    '</svg>';
-  var html = brand
-    ? '<div style="position:relative;width:34px;height:44px">' + svgPin.replace('width="26" height="34"','width="34" height="44"') + logoHtml + '</div>'
-    : '<div style="position:relative;width:34px;height:44px">' +
-        '<svg width="34" height="44" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg">' +
-        '<path d="M13 1C6.925 1 2 5.925 2 12c0 8.5 11 21 11 21S24 20.5 24 12c0-6.075-4.925-11-11-11z" fill="' + color + '" stroke="rgba(0,0,0,.4)" stroke-width="1.5"/>' +
-        '<text x="13" y="14" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="#fff">⛽</text>' +
-        '</svg></div>';
-  return L.divIcon({ className:'', html:html, iconSize:[34,44], iconAnchor:[17,44], popupAnchor:[0,-44] });
+  var html =
+    '<div style="position:relative;width:34px;height:44px">' +
+      '<div style="position:absolute;top:0;left:1.5px;width:31px;height:31px;border-radius:50%;background:#fff;border:3px solid ' + color + ';box-shadow:0 2px 6px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;overflow:hidden">' +
+        badgeInner +
+      '</div>' +
+      '<div style="position:absolute;top:27px;left:10.5px;width:0;height:0;border-left:6.5px solid transparent;border-right:6.5px solid transparent;border-top:9px solid ' + color + '"></div>' +
+    '</div>';
+  return L.divIcon({ className:'', html:html, iconSize:[34,44], iconAnchor:[17,40], popupAnchor:[0,-40] });
 }
 
 // ── Overpass API — live POI fetch ─────────────────────────────────────────────
@@ -2445,152 +2477,27 @@ function renderFavorites() {
 }
 
 // ── Live Road Ban Feeds ────────────────────────────────────────────────────────
-const CORS_PROXIES = [
-  function(u){ return 'https://corsproxy.io/?' + encodeURIComponent(u); },
-  function(u){ return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
-  function(u){ return 'https://thingproxy.freeboard.io/fetch/' + u; }
-];
-const BAN_FEEDS = [
-  // Canada
-  { key:'bc', name:'BC DriveBC',       region:'BC', color:'#E05252', direct:true,
-    url:'https://api.open511.gov.bc.ca/events?format=json', parser:'open511' },
-  { key:'ab', name:'Alberta 511',      region:'AB', color:'#F5A623', direct:false,
-    url:'https://511.alberta.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'on', name:'Ontario 511',      region:'ON', color:'#F5A623', direct:false,
-    url:'https://511on.ca/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  // US Northwest
-  // NOTE: WA isn't actually on the IBI511 platform — it's WSDOT's own separate
-  // Traveler Information API with different auth. This entry will keep
-  // erroring until that's built as its own integration; left in rather than
-  // silently dropped so the gap stays visible. See README.
-  { key:'wa', name:'Washington DOT',   region:'WA', color:'#2C7DA0', direct:false,
-    url:'https://wsdot.wa.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'or', name:'Oregon TripCheck', region:'OR', color:'#2C7DA0', direct:false,
-    url:'https://www.tripcheck.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'id', name:'Idaho 511',        region:'ID', color:'#2C7DA0', direct:false,
-    url:'https://511.idaho.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'mt', name:'Montana DOT',      region:'MT', color:'#2C7DA0', direct:false,
-    url:'https://511mt.net/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  // US Northern Plains
-  { key:'nd', name:'North Dakota 511', region:'ND', color:'#2C7DA0', direct:false,
-    url:'https://511.nd.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'sd', name:'South Dakota 511', region:'SD', color:'#2C7DA0', direct:false,
-    url:'https://sd511.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'wy', name:'Wyoming DOT',      region:'WY', color:'#2C7DA0', direct:false,
-    url:'https://wyoroad.info/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'mn', name:'Minnesota 511',    region:'MN', color:'#2C7DA0', direct:false,
-    url:'https://511mn.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'wi', name:'Wisconsin 511',    region:'WI', color:'#2C7DA0', direct:false,
-    url:'https://511wi.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  // US Midwest
-  // Michigan omitted: michigan511.org no longer resolves (DNS failure) and no
-  // verified drop-in replacement feed has been confirmed yet — see README.
-  { key:'oh', name:'Ohio OHGO',        region:'OH', color:'#2C7DA0', direct:false,
-    url:'https://www.ohgo.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'ia', name:'Iowa 511',         region:'IA', color:'#2C7DA0', direct:false,
-    url:'https://511ia.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'ne', name:'Nebraska 511',     region:'NE', color:'#2C7DA0', direct:false,
-    url:'https://511.nebraska.gov/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'mo', name:'Missouri 511',     region:'MO', color:'#2C7DA0', direct:false,
-    url:'https://traveler.modot.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'il', name:'Illinois 511',     region:'IL', color:'#2C7DA0', direct:false,
-    url:'https://www.gettingaroundillinois.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  // US South / Great Plains
-  { key:'tx', name:'Texas DriveTexas', region:'TX', color:'#2C7DA0', direct:false,
-    url:'https://www.drivetexas.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'ks', name:'Kansas 511',       region:'KS', color:'#2C7DA0', direct:false,
-    url:'https://www.kandrive.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'co', name:'Colorado COTRIP',  region:'CO', color:'#2C7DA0', direct:false,
-    url:'https://cotrip.org/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'ut', name:'Utah UDOT',        region:'UT', color:'#2C7DA0', direct:false,
-    url:'https://prod-ut.ibi511.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  // US East
-  { key:'pa', name:'Pennsylvania 511', region:'PA', color:'#2C7DA0', direct:false,
-    url:'https://www.511pa.com/api/v2/get/event?format=json&lang=en', parser:'ibi511' },
-  { key:'ny', name:'NY DOT CommVehicle',region:'NY',color:'#2C7DA0', direct:true,
-    url:'https://gis.dot.ny.gov/hostingny/rest/services/CommVehicleDataFeed/MapServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=500', parser:'arcgis' },
-];
-const BAN_KEYWORDS = ['weight restriction','load restriction','spring ban','frost law',
-  'seasonal','overweight','weight limit','road ban','axle weight','weight reduced',
-  'load limit','frozen roadway','spring thaw','spring weight','posting'];
-const BAN_TYPES_SET = new Set(['RESTRICTION','ROAD_CONDITION','CLOSURE','WEIGHT_RESTRICTION']);
-
-function isBanEvent(headline, desc, type) {
-  var text = ((headline||'') + ' ' + (desc||'') + ' ' + (type||'')).toLowerCase();
-  return BAN_KEYWORDS.some(function(kw){ return text.indexOf(kw) !== -1; }) ||
-         BAN_TYPES_SET.has((type||'').toUpperCase());
-}
-
-async function fetchFeedSafe(feed) {
-  async function tryUrl(url, wrapped) {
-    var r = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    var text = await r.text();
-    if (!text || !text.trim()) throw new Error('Empty');
-    // allorigins /get wraps in {contents:'...'}
-    if (wrapped) { var w = JSON.parse(text); return JSON.parse(w.contents || w); }
-    var t = text.trim();
-    if (t[0] === '<') throw new Error('XML response — not JSON');
-    return JSON.parse(t);
-  }
-  // Try direct first for all feeds
-  try { return await tryUrl(feed.url, false); } catch(e){}
-  // Proxy chain
-  var proxies = [
-    function(u){ return { url:'https://api.allorigins.win/get?url='+encodeURIComponent(u), wrapped:true }; },
-    function(u){ return { url:'https://corsproxy.io/?'+encodeURIComponent(u), wrapped:false }; },
-    function(u){ return { url:'https://api.allorigins.win/raw?url='+encodeURIComponent(u), wrapped:false }; },
-    function(u){ return { url:'https://thingproxy.freeboard.io/fetch/'+u, wrapped:false }; }
-  ];
-  for (var i = 0; i < proxies.length; i++) {
-    try { var p = proxies[i](feed.url); return await tryUrl(p.url, p.wrapped); } catch(e){}
-  }
-  throw new Error('All proxies failed');
-}
-
-function parseFeedEvents(feed, data) {
-  if (feed.parser === 'open511') {
-    return (data.events || []).map(function(e) {
-      return { headline: e.headline||e.event_type||'', desc: e.description||'',
-        type: e.event_type||'',
-        road: (e.roads&&e.roads[0]&&e.roads[0].name)||'',
-        area: (e.areas&&e.areas[0]&&e.areas[0].name)||'',
-        lat:  (e.geography&&e.geography.coordinates&&e.geography.coordinates[1])||null,
-        lon:  (e.geography&&e.geography.coordinates&&e.geography.coordinates[0])||null };
-    });
-  }
-  if (feed.parser === 'arcgis') {
-    // ArcGIS REST feature query shape: {features:[{attributes:{}, geometry:{x,y}}]}.
-    // Falling through to the generic branch below would call .map() on the
-    // response object itself (not an array) and throw, which is why NY DOT
-    // (the only arcgis-parsed feed) always showed ERROR in the no-server
-    // fallback path even though its endpoint is CORS-open and reachable.
-    return (data.features || []).map(function(f) {
-      var a = f.attributes || {}, g = f.geometry || {};
-      return { headline: a.RESTRICTION_TYPE||a.EVENT_TYPE||a.TYPE||'',
-        desc: a.DESCRIPTION||a.RESTRICTION_DESC||a.COMMENT||'',
-        type: a.RESTRICTION_TYPE||a.EVENT_TYPE||'restriction',
-        road: a.ROUTE||a.ROAD_NAME||a.LOCATION||'',
-        area: a.COUNTY||a.REGION||'NY',
-        lat:  g.y!=null?g.y:(a.LATITUDE!=null?a.LATITUDE:null),
-        lon:  g.x!=null?g.x:(a.LONGITUDE!=null?a.LONGITUDE:null) };
-    });
-  }
-  return (data.Events||data.events||data||[]).map(function(e) {
-    return { headline: e.EventType||e.Headline||e.headline||'',
-      desc: e.Description||e.description||'',
-      type: e.EventType||e.event_type||'',
-      road: e.RoadwayName||e.road||'',
-      area: e.County||e.City||e.area||'',
-      lat:  e.Latitude!=null?e.Latitude:(e.lat!=null?e.lat:null),
-      lon:  e.Longitude!=null?e.Longitude:(e.lon!=null?e.lon:null) };
-  });
-}
+// This used to also carry a full client-side fallback (a BAN_FEEDS list plus
+// a 4-proxy CORS-bypass chain through corsproxy.io/allorigins.win/thingproxy)
+// for when the local server wasn't running. Removed: it duplicated
+// rigrout-server.js's BAN_FEEDS (and had drifted out of sync with it — wrong
+// domains like mi511.org, 511sd.com, udottraffic.utah.gov, and Ohio pointed at
+// California's 511.org), and a race in detectServer() meant it fired on
+// *every* load regardless of whether the server was actually up, hammering
+// three free public CORS proxies with 150+ requests per page load. The
+// server-side feed list is now the single source of truth — see
+// rigrout-server.js's BAN_FEEDS and README's "Live road ban feeds" section.
 
 async function fetchRoadBans() {
   var sourcesEl = document.getElementById('ban-sources');
   var listEl    = document.getElementById('ban-feed-list');
   var totalEl   = document.getElementById('ban-total-badge');
+
+  // Wait for the initial server-detection check to finish rather than
+  // reading serverAvailable synchronously — this is called at page load
+  // right alongside detectServer(), so without this it would always see
+  // the pre-detection default (false) even when the server is up.
+  if (serverDetectPromise) await serverDetectPromise;
 
   // ── If server is running, use it (no CORS, much more reliable) ────────────
   if (serverAvailable) {
@@ -2651,114 +2558,21 @@ async function fetchRoadBans() {
       return;
     } catch(e) { console.warn('Server ban fetch failed:', e.message); }
   }
-  // Fall through to direct API fetching below…
 
-  // ── Render all sources immediately with loading state ─────────────────────
-  var srcState = {}; // key → { feed, bans, status }
-  BAN_FEEDS.forEach(function(feed) { srcState[feed.key] = { feed:feed, bans:[], status:'loading' }; });
-
-  var REGION_FLAG = {
-    BC:'🇨🇦',AB:'🇨🇦',SK:'🇨🇦',MB:'🇨🇦',ON:'🇨🇦',
-    ID:'🇺🇸',MT:'🇺🇸',ND:'🇺🇸',MN:'🇺🇸',WI:'🇺🇸',WA:'🇺🇸',
-    OR:'🇺🇸',SD:'🇺🇸',WY:'🇺🇸',CO:'🇺🇸',UT:'🇺🇸',IA:'🇺🇸',NE:'🇺🇸',
-    NY:'🇺🇸',PA:'🇺🇸',OH:'🇺🇸',MI:'🇺🇸',TX:'🇺🇸',IL:'🇺🇸'
-  };
-
-  function renderSources() {
-    if (!sourcesEl) return;
-    var canada = BAN_FEEDS.filter(function(f){ return ['bc','ab','sk','mb','on'].indexOf(f.key)!==-1; });
-    var us     = BAN_FEEDS.filter(function(f){ return ['bc','ab','sk','mb','on'].indexOf(f.key)===-1; });
-
-    function srcRow(feed) {
-      var s = srcState[feed.key] || { status:'loading', bans:[] };
-      var badge, dotColor;
-      if (s.status==='loading') {
-        badge = '<span class="ban-status loading">LOADING</span>';
-        dotColor = 'var(--dim)';
-      } else if (s.status==='error') {
-        badge = '<span class="ban-status err">ERROR</span>';
-        dotColor = 'var(--red)';
-      } else if (s.bans.length) {
-        badge = '<span class="ban-count-badge">'+s.bans.length+' ban'+(s.bans.length!==1?'s':'')+'</span>';
-        dotColor = 'var(--red)';
-      } else {
-        badge = '<span class="ban-status live">LIVE ✓</span>';
-        dotColor = 'var(--green)';
-      }
-      var flag = REGION_FLAG[feed.region] || '🌐';
-      return '<div style="display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)">' +
-        '<div style="width:7px;height:7px;border-radius:50%;background:'+dotColor+';flex-shrink:0"></div>' +
-        '<span style="font-size:9px;width:14px;flex-shrink:0">'+flag+'</span>' +
-        '<span style="font-size:10px;font-weight:600;width:20px;color:var(--dim);flex-shrink:0">'+feed.region+'</span>' +
-        '<span style="font-size:10px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+feed.name+'</span>' +
-        badge +
-        '</div>';
-    }
-
-    var loadingCount = BAN_FEEDS.filter(function(f){ var s=srcState[f.key]; return !s||s.status==='loading'; }).length;
-    var liveCount    = BAN_FEEDS.filter(function(f){ var s=srcState[f.key]; return s&&s.status==='ok'; }).length;
-    var errCount     = BAN_FEEDS.filter(function(f){ var s=srcState[f.key]; return s&&s.status==='error'; }).length;
-
-    // Most of these feeds don't set CORS headers for direct browser access —
-    // that's exactly why rigrout-server.js exists as a proxy. When it's not
-    // running, this fallback tries free public CORS-bypass proxies first,
-    // but those are third-party services with no uptime guarantee, so a wall
-    // of errors here usually means "start the local server," not "these 22
-    // states' road-ban systems are all down at once."
-    var showServerHint = !loadingCount && errCount >= 10;
-
+  // No local server detected: road ban feeds require it (most state/511
+  // sites don't set CORS headers for direct browser access — that's the
+  // whole reason rigrout-server.js exists as a proxy). Show a clear message
+  // instead of guessing at CORS-bypass proxies.
+  if (sourcesEl) {
     sourcesEl.innerHTML =
-      '<div style="display:flex;gap:8px;font-size:10px;margin-bottom:8px;flex-wrap:wrap">' +
-        '<span style="color:var(--green)">● '+liveCount+' live</span>' +
-        (loadingCount ? '<span style="color:var(--dim)">⏳ '+loadingCount+' loading</span>' : '') +
-        (errCount ? '<span style="color:var(--red)">✕ '+errCount+' error</span>' : '') +
-        '<span style="color:var(--dim);margin-left:auto">'+BAN_FEEDS.length+' feeds</span>' +
-      '</div>' +
-      (showServerHint ?
-        '<div style="font-size:10px;color:var(--amber);background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.25);border-radius:5px;padding:7px 9px;margin-bottom:8px;line-height:1.4">'+
-        '⚠ Most state/provincial feeds block direct browser access and need the local server to proxy them. '+
-        '<strong>Run <code>node rigrout-server.js</code></strong> (see README) and reload — this is expected without it, not a sign every feed is actually down.'+
-        '</div>' : '') +
-      '<div style="font-size:9px;font-weight:700;color:var(--dim);margin-bottom:3px;text-transform:uppercase;letter-spacing:.7px">🇨🇦 Canada</div>' +
-      canada.map(srcRow).join('') +
-      '<div style="font-size:9px;font-weight:700;color:var(--dim);margin:6px 0 3px;text-transform:uppercase;letter-spacing:.7px">🇺🇸 United States</div>' +
-      us.map(srcRow).join('');
+      '<div style="font-size:10px;color:var(--amber);background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.25);border-radius:5px;padding:7px 9px;line-height:1.4">'+
+      '⚠ Road ban feeds need the local server running. '+
+      '<strong>Run <code>node rigrout-server.js</code></strong> (see README), then reload.'+
+      '</div>';
   }
-
-  renderSources(); // show loading state immediately
   if (listEl) listEl.innerHTML = '';
-
-  // ── Fetch each feed, updating UI as results arrive ────────────────────────
-  var allBans = [];
+  if (totalEl) totalEl.style.display = 'none';
   poiLayers.bans.clearLayers();
-
-  await Promise.allSettled(BAN_FEEDS.map(async function(feed) {
-    try {
-      var data = await fetchFeedSafe(feed);
-      var evts = parseFeedEvents(feed, data);
-      var bans = evts.filter(function(e){ return isBanEvent(e.headline,e.desc,e.type); });
-      srcState[feed.key] = { feed:feed, bans:bans, status:'ok' };
-      bans.forEach(function(b){ allBans.push(Object.assign({},b,{feedName:feed.name,feedColor:feed.color,feedUrl:feed.url})); });
-    } catch(e) {
-      srcState[feed.key] = { feed:feed, bans:[], status:'error' };
-    }
-    renderSources(); // live update as each feed finishes
-  }));
-
-  // ── Final: render ban cards + map markers ─────────────────────────────────
-  if (totalEl) {
-    if (allBans.length) { totalEl.textContent = allBans.length + ' active'; totalEl.style.display = ''; }
-    else { totalEl.style.display = 'none'; }
-  }
-  renderBans(allBans);
-
-  allBans.forEach(function(b) {
-    if (b.lat && b.lon) {
-      L.circleMarker([b.lat,b.lon],{radius:8,color:b.feedColor,fillColor:b.feedColor,fillOpacity:0.75,weight:2})
-       .bindPopup('<strong>'+(b.headline||b.type)+'</strong><br>'+(b.road||'')+' '+(b.area||'')+'<br><em>'+b.feedName+'</em>')
-       .addTo(poiLayers.bans);
-    }
-  });
 }
 
 function renderBans(bans) {
@@ -3170,34 +2984,6 @@ async function runServerRouteAudit(bounds) {
     return null;
   }
 }
-
-// ── More ban feeds (match server) ─────────────────────────────────────────────
-// Append extra state feeds to the frontend BAN_FEEDS array
-(function() {
-  var extraFeeds = [
-    { key:'or', name:'Oregon TripCheck', region:'OR', color:'#2C7DA0', direct:false, url:'https://tripcheck.com/api/v2/get/event?format=json', parser:'ibi511' },
-    { key:'sd', name:'South Dakota 511', region:'SD', color:'#2C7DA0', direct:false, url:'https://511sd.com/api/v2/get/event?format=json', parser:'ibi511' },
-    { key:'wy', name:'Wyoming DOT',      region:'WY', color:'#2C7DA0', direct:false, url:'https://wyoroad.info/api/v2/get/event?format=json', parser:'ibi511' },
-    { key:'co', name:'Colorado COTRIP',  region:'CO', color:'#2C7DA0', direct:false, url:'https://cotrip.org/api/v2/get/event?format=json', parser:'ibi511' },
-    { key:'ut', name:'Utah UDOT',        region:'UT', color:'#2C7DA0', direct:false, url:'https://udottraffic.utah.gov/api/v2/get/event?format=json', parser:'ibi511' },
-    { key:'ia', name:'Iowa 511',         region:'IA', color:'#2C7DA0', direct:false, url:'https://511ia.org/api/v2/get/event?format=json', parser:'ibi511' },
-    { key:'ne', name:'Nebraska 511',     region:'NE', color:'#2C7DA0', direct:false, url:'https://511.nebraska.gov/api/v2/get/event?format=json', parser:'ibi511' },
-    // NY DOT CommVehicleDataFeed — ArcGIS REST
-    { key:'ny', name:'NY DOT CommVehicle', region:'NY', color:'#E05252', direct:true,  url:'https://gis.dot.ny.gov/hostingny/rest/services/CommVehicleDataFeed/MapServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=500', parser:'arcgis' },
-    // Major trucking corridor states
-    { key:'pa', name:'Pennsylvania 511', region:'PA', color:'#2C7DA0', direct:false, url:'https://www.511pa.com/api/v2/get/event?format=json', parser:'ibi511' },
-    { key:'oh', name:'Ohio 511',         region:'OH', color:'#2C7DA0', direct:false, url:'https://www.511.org/api/v2/get/event?format=json', parser:'ibi511' },
-    { key:'mi', name:'Michigan 511',     region:'MI', color:'#2C7DA0', direct:false, url:'https://mi511.org/api/v2/get/event?format=json', parser:'ibi511' },
-    { key:'tx', name:'Texas DriveTexas', region:'TX', color:'#2C7DA0', direct:false, url:'https://www.drivetexas.org/api/v2/get/event?format=json', parser:'ibi511' },
-    { key:'il', name:'Illinois 511',     region:'IL', color:'#2C7DA0', direct:false, url:'https://www.gettingaroundillinois.com/api/v2/get/event?format=json', parser:'ibi511' },
-  ];
-  // Only add if not already present
-  extraFeeds.forEach(function(f) {
-    if (!BAN_FEEDS.find(function(x){ return x.key===f.key; })) {
-      BAN_FEEDS.push(f);
-    }
-  });
-})();
 
 // ── Patch planRoute to call server audit ──────────────────────────────────────
 var _origPlanRoute = planRoute;
