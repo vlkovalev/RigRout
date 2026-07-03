@@ -211,6 +211,12 @@ function normalizePOI(el, type) {
   if (tags.restaurant==='yes') am.push('Restaurant');
   if (tags.wifi==='yes'||tags.internet_access==='wlan') am.push('Wi-Fi');
   if (tags.scales==='yes') am.push('Scale');
+  // Unnamed cardlock/fuel points are often genuinely private fleet-fuel sites
+  // (Pacific Pride, CFN, Fuelman, etc.) that OSM contributors never gave a
+  // customer-facing name — that's real data, not missing data. Surface why
+  // instead of leaving the client to show a blank line under the generic
+  // type-label title.
+  if (!am.length && tags.access === 'private') am.push('🔒 Private access — fuel card required');
   return {
     id: type+'_'+el.id, type, lat, lon,
     title: tags.name||tags.operator||tags.brand||meta.label,

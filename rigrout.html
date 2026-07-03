@@ -1457,7 +1457,14 @@ function buildAmenString(tags, type) {
     if (tags['border_crossing:travel_document']) parts.push('Docs: '+tags['border_crossing:travel_document']);
   }
   if (tags.operator) parts.push(tags.operator);
-  return parts.length ? parts.join(' · ') : typeLabel(type);
+  // Cardlock/fuel points with no name tag are frequently genuinely unbranded
+  // in OSM — private fleet-fuel sites (Pacific Pride, CFN, Fuelman, etc.)
+  // often aren't customer-facing, so a contributor never added a name. That's
+  // real, not a bug — but the popup used to repeat the exact same generic
+  // type label as both the title AND this line (e.g. "Cardlock" / "Cardlock"),
+  // which read as a glitch. Surface the actual reason instead of a duplicate.
+  if (!parts.length && tags.access === 'private') parts.push('🔒 Private access — fuel card required');
+  return parts.length ? parts.join(' · ') : '';
 }
 
 function renderPOILayer(type, pts) {
@@ -2337,24 +2344,45 @@ async function fetchPOIsAlongRoute(bounds) {
 
 async function fetchPOILayerInBounds(type, bounds) {
   var ftag = document.getElementById('ftag-' + type);
-  if (ftag) ftag.title = ftag.title.replace(/ — unavailable.*/,'');
+  if (ftag) ftag.title = ftag.title.replace(/ — (unavailable|server error).*/,'');
+  setFtagBadge(type, '…'); // visible "loading" state — a bare 90s of silence looked identical to "0 results found"
   var bbox = bounds.getSouth()+','+bounds.getWest()+','+bounds.getNorth()+','+bounds.getEast();
 
   // ── Server first (bypasses all CORS + Overpass rate limits) ───────────────
   if (serverAvailable) {
     try {
-      var r = await fetch(API_BASE+'/api/layers?types='+type+'&bbox='+bbox, { signal:AbortSignal.timeout(30000) });
+      // Server's own Overpass proxy retries 3 upstream mirrors at 25s each
+      // (up to ~75s worst case) before it gives up — the client timeout here
+      // has to outlast that, or we'd abort a request that was about to
+      // succeed. Measured live: a single cold query took ~92s when the
+      // public Overpass mirrors were degraded.
+      var r = await fetch(API_BASE+'/api/layers?types='+type+'&bbox='+bbox, { signal:AbortSignal.timeout(100000) });
+      if (!r.ok) throw new Error('HTTP '+r.status);
       var d = await r.json();
-      var items = (d.layers && d.layers[type]) || [];
+      if (!d.layers || !(type in d.layers)) throw new Error('malformed response — missing layers.'+type);
+      var items = d.layers[type] || [];
       var pts = items.map(function(item){ return { lat:item.lat, lon:item.lon, name:item.title,
         amen:(item.props&&item.props.amenities)||'', opening:(item.props&&item.props.opening_hours)||'' }; });
       poiCache[type] = pts;
       setFtagBadge(type, pts.length ? String(pts.length) : '');
       return pts;
-    } catch(e) { console.warn('Server fetch failed for',type,e.message); }
+    } catch(e) {
+      console.warn('Server fetch failed for',type,e.message);
+      // Don't fall through to the client-side Overpass retry below: the
+      // server's /api/layers already tries those same 3 public Overpass
+      // mirrors itself. If the server (proxying through those exact
+      // endpoints) couldn't get data, hitting them again from here can't
+      // succeed either — it would just silently double the wait. Surface
+      // the failure honestly instead of pretending the area has 0 results.
+      setFtagBadge(type, '');
+      if (ftag) ftag.title += ' — server error, click to retry';
+      return null;
+    }
   }
 
-  // ── Fallback: direct Overpass (3 endpoints) ────────────────────────────────
+  // ── No local server: direct Overpass (3 endpoints) — only reached when
+  // there's no proxy to go through at all, not as a retry after the server
+  // path already failed (see comment above). ─────────────────────────────
   var query = '[out:json][timeout:25];' + OVERPASS_QUERIES[type].replace(/BBOX/g, bbox) + 'out center;';
   var endpoints = [
     'https://overpass-api.de/api/interpreter',
