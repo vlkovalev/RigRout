@@ -573,6 +573,21 @@ async function fetchTomTomBans(bounds) {
   const minLat = qBounds.s;
   const maxLon = qBounds.e;
   const maxLat = qBounds.n;
+  // Traffic API v5 rejects bounding boxes larger than 10,000 km2. Wide map
+  // views still receive the state/province feeds; TomTom activates as the
+  // driver zooms into a local area where its incident detail is useful.
+  const midLatRadians = ((minLat + maxLat) / 2) * Math.PI / 180;
+  const widthKm = Math.abs(maxLon - minLon) * 111.32 * Math.cos(midLatRadians);
+  const heightKm = Math.abs(maxLat - minLat) * 110.574;
+  if (widthKm * heightKm > 9500) {
+    return {
+      items: [],
+      feedStatus: {
+        tomtom: { name: 'TomTom Live Traffic', bans: [], status: 'ok',
+          note: 'Zoom in to load local TomTom incidents' }
+      }
+    };
+  }
   const params = new URLSearchParams({
     key: process.env.TOMTOM_API_KEY,
     bbox: [minLon, minLat, maxLon, maxLat].join(','),
