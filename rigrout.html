@@ -380,6 +380,7 @@ select option{background:var(--bg);color:var(--text);padding:8px}
     display: none;
     padding-top: 8px;
     animation: slideUpSidebar .22s ease;
+    transition: transform .2s ease, opacity .2s ease;
     overflow-y: auto;
   }
   #sidebar.mobile-open {
@@ -427,6 +428,31 @@ select option{background:var(--bg);color:var(--text);padding:8px}
   }
   .sheet-handle {
     display: block;
+    width: 120px;
+    height: 32px;
+    margin: -6px auto 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+    position: relative;
+  }
+  .sheet-handle::before {
+    content: "";
+    position: absolute;
+    width: 64px;
+    height: 6px;
+    border-radius: 4px;
+    background: var(--border);
+    left: 28px;
+    top: 13px;
+  }
+  #sidebar.sheet-dragging {
+    animation: none;
+    transition: none;
+  }
+  #sidebar.sheet-closing {
+    animation: none;
+    pointer-events: none;
   }
   
   /* Sidebar sections on mobile */
@@ -3127,8 +3153,127 @@ function switchLayerBar(key) {
 // ── Mobile sidebar toggle ─────────────────────────────────────────────────────
 function toggleMobileSidebar() {
   var sb = document.getElementById('sidebar');
-  if (sb) sb.classList.toggle('mobile-open');
+  if (!sb) return;
+  sb.classList.remove('sheet-closing', 'sheet-dragging');
+  sb.style.transform = '';
+  sb.style.opacity = '';
+  sb.classList.toggle('mobile-open');
 }
+
+// Swipe the mobile route menu down to reveal the full map.
+(function initMobileSheetSwipe() {
+  var sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  var handle = sidebar.querySelector('.sheet-handle');
+  if (!handle) return;
+
+  handle.setAttribute('role', 'button');
+  handle.setAttribute('tabindex', '0');
+  handle.setAttribute('aria-label', 'Swipe down to close route menu');
+
+  var startY = 0;
+  var startTime = 0;
+  var distance = 0;
+  var dragging = false;
+
+  function finishDrag(shouldClose) {
+    if (!dragging) return;
+    dragging = false;
+    sidebar.classList.remove('sheet-dragging');
+
+    if (shouldClose) {
+      sidebar.classList.add('sheet-closing');
+      sidebar.style.transform = 'translateY(105%)';
+      sidebar.style.opacity = '0';
+      window.setTimeout(function() {
+        sidebar.classList.remove('mobile-open', 'sheet-closing');
+        sidebar.style.transform = '';
+        sidebar.style.opacity = '';
+      }, 210);
+    } else {
+      sidebar.style.transform = '';
+      sidebar.style.opacity = '';
+    }
+  }
+
+  handle.addEventListener('pointerdown', function(event) {
+    if (window.innerWidth > 640 || !sidebar.classList.contains('mobile-open')) return;
+    dragging = true;
+    distance = 0;
+    startY = event.clientY;
+    startTime = performance.now();
+    sidebar.classList.add('sheet-dragging');
+    handle.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+
+  handle.addEventListener('pointermove', function(event) {
+    if (!dragging) return;
+    distance = Math.max(0, event.clientY - startY);
+    sidebar.style.transform = 'translateY(' + distance + 'px)';
+    sidebar.style.opacity = String(Math.max(.35, 1 - distance / 500));
+    event.preventDefault();
+  });
+
+  handle.addEventListener('pointerup', function() {
+    var elapsed = Math.max(1, performance.now() - startTime);
+    finishDrag(distance > 72 || (distance > 28 && distance / elapsed > .45));
+  });
+  handle.addEventListener('pointercancel', function() { finishDrag(false); });
+  handle.addEventListener('touchstart', function(event) {
+    if (window.innerWidth > 640 || !sidebar.classList.contains('mobile-open') || !event.touches.length) return;
+    dragging = true;
+    distance = 0;
+    startY = event.touches[0].clientY;
+    startTime = performance.now();
+    sidebar.classList.add('sheet-dragging');
+    event.preventDefault();
+  }, {passive:false});
+  handle.addEventListener('touchmove', function(event) {
+    if (!dragging || !event.touches.length) return;
+    distance = Math.max(0, event.touches[0].clientY - startY);
+    sidebar.style.transform = 'translateY(' + distance + 'px)';
+    sidebar.style.opacity = String(Math.max(.35, 1 - distance / 500));
+    event.preventDefault();
+  }, {passive:false});
+  handle.addEventListener('touchend', function() {
+    var elapsed = Math.max(1, performance.now() - startTime);
+    finishDrag(distance > 72 || (distance > 28 && distance / elapsed > .45));
+  });
+  handle.addEventListener('touchcancel', function() { finishDrag(false); });
+  // Some Android WebViews route a drag on the visual handle to the scrollable
+  // sheet instead of the handle. Capture gestures in the sheet's top grab area.
+  sidebar.addEventListener('touchstart', function(event) {
+    if (dragging || window.innerWidth > 640 || !sidebar.classList.contains('mobile-open') || !event.touches.length) return;
+    var rect = sidebar.getBoundingClientRect();
+    if (event.touches[0].clientY > rect.top + 56) return;
+    dragging = true;
+    distance = 0;
+    startY = event.touches[0].clientY;
+    startTime = performance.now();
+    sidebar.classList.add('sheet-dragging');
+    event.preventDefault();
+  }, {passive:false, capture:true});
+  sidebar.addEventListener('touchmove', function(event) {
+    if (!dragging || !event.touches.length) return;
+    distance = Math.max(0, event.touches[0].clientY - startY);
+    sidebar.style.transform = 'translateY(' + distance + 'px)';
+    sidebar.style.opacity = String(Math.max(.35, 1 - distance / 500));
+    event.preventDefault();
+  }, {passive:false, capture:true});
+  sidebar.addEventListener('touchend', function() {
+    if (!dragging) return;
+    var elapsed = Math.max(1, performance.now() - startTime);
+    finishDrag(distance > 72 || (distance > 28 && distance / elapsed > .45));
+  }, {capture:true});
+  handle.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      finishDrag(true);
+      if (!dragging) toggleMobileSidebar();
+    }
+  });
+})();
 
 // ── Profile persistence ───────────────────────────────────────────────────────
 function saveProfile() {
