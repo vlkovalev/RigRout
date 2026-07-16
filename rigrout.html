@@ -2333,6 +2333,8 @@ async function fetchPOIsAlongRoute(bounds) {
     poiVisible[t] = true;
     var tag = document.getElementById('ftag-'+t);
     if (tag) tag.classList.add('on');
+    var checkbox = document.getElementById('lyr-'+t);
+    if (checkbox) checkbox.checked = true;
   });
   // ~8km buffer each side
   var buf = 0.08;
@@ -2340,6 +2342,7 @@ async function fetchPOIsAlongRoute(bounds) {
     [bounds.getSouth()-buf, bounds.getWest()-buf],
     [bounds.getNorth()+buf, bounds.getEast()+buf]
   );
+  var windows = splitRouteBounds(exp);
   // Always fetch stops + rest along route; also fetch others if user toggled them on
   var alwaysFetch = ['stops','rest','border'];
   var types = Array.from(new Set(alwaysFetch.concat(
@@ -2348,11 +2351,67 @@ async function fetchPOIsAlongRoute(bounds) {
   
   await Promise.allSettled(types.map(async function(type) {
     delete poiCache[type];
-    const pts = await fetchPOILayerInBounds(type, exp);
-    if (pts !== null) {
-      renderPOILayer(type, pts);
+    var merged = [];
+    for (var wi=0; wi<windows.length; wi++) {
+      var pts = await fetchPOILayerInBounds(type, windows[wi]);
+      if (pts !== null) merged = merged.concat(pts);
     }
+    var seen = new Set();
+    merged = merged.filter(function(p) {
+      var key = Number(p.lat).toFixed(5)+','+Number(p.lon).toFixed(5)+','+(p.name||'');
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+    poiCache[type] = merged;
+    setFtagBadge(type, merged.length ? String(merged.length) : '');
+    renderPOILayer(type, merged);
   }));
+
+  if (poiVisible.restrict) await fetchRestrictionsAlongRoute(windows);
+  if (poiVisible.bans) fetchRoadBans();
+}
+
+// The layer API intentionally caps a single viewport at 12 degrees latitude
+// and 20 degrees longitude. Long-haul routes can span much more than that, so
+// divide their corridor into overlapping, server-safe windows and merge the
+// results instead of failing the entire checked layer with HTTP 400.
+function splitRouteBounds(bounds) {
+  var south=bounds.getSouth(), north=bounds.getNorth();
+  var west=bounds.getWest(), east=bounds.getEast();
+  var latStep=8, lonStep=12, overlap=0.08;
+  var windows=[];
+  for (var s=south; s<north; s+=latStep) {
+    for (var w=west; w<east; w+=lonStep) {
+      windows.push(L.latLngBounds(
+        [Math.max(-90,s-overlap), Math.max(-180,w-overlap)],
+        [Math.min(90,Math.min(north,s+latStep)+overlap), Math.min(180,Math.min(east,w+lonStep)+overlap)]
+      ));
+    }
+  }
+  return windows.length ? windows : [bounds];
+}
+
+async function fetchRestrictionsAlongRoute(windows) {
+  var merged=[];
+  for (var i=0; i<windows.length; i++) {
+    var b=windows[i];
+    var bbox=b.getSouth()+','+b.getWest()+','+b.getNorth()+','+b.getEast();
+    try {
+      var r=await fetch(API_BASE+'/api/layers?types=restrict&bbox='+bbox,
+        {signal:AbortSignal.timeout(100000)});
+      if (!r.ok) continue;
+      var d=await r.json();
+      merged=merged.concat((d.layers&&d.layers.restrict)||[]);
+    } catch(e) { console.warn('Route restrictions window failed:',e.message); }
+  }
+  var seen=new Set();
+  merged=merged.filter(function(item) {
+    var key=Number(item.lat).toFixed(5)+','+Number(item.lon).toFixed(5)+','+(item.title||'');
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+  renderRestrictionItems(merged);
+  setFtagBadge('restrict',merged.length?String(merged.length):'');
 }
 
 async function fetchPOILayerInBounds(type, bounds) {

@@ -10,7 +10,7 @@
  * current — that's worse than no offline support at all. Offline mode here
  * means "the app shell loads," not "the data is available offline."
  */
-const CACHE_NAME = 'rigrout-shell-v7';
+const CACHE_NAME = 'rigrout-shell-v8';
 const SHELL_FILES = [
   './rigrout.html',
   './manifest.json',
