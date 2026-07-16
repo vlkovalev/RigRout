@@ -8,6 +8,7 @@
     "mobile:prepare": "node scripts/prepare-mobile.mjs",
     "mobile:sync": "npm run mobile:prepare && cap sync",
     "mobile:android": "npm run mobile:sync && cap open android",
+    "mobile:release:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android-release.ps1",
     "mobile:ios": "npm run mobile:sync && cap open ios"
   },
   "engines": {

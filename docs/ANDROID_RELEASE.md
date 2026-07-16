@@ -31,6 +31,14 @@ Push-Location android
 Pop-Location
 ```
 
+For the standard local key location above, the repository also includes a safe
+interactive builder. It prompts invisibly for the password, verifies the final
+bundle signature, and clears signing variables when finished:
+
+```powershell
+npm.cmd run mobile:release:android
+```
+
 Enroll in Google Play App Signing when creating the Play Console app. Google protects the app-signing key; this local key is the upload key. Keep an offline backup.
 
 ## Play Console data-safety answers
