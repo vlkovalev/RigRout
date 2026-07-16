@@ -18,14 +18,47 @@ node rigrout-server.js
 
 Then open **http://localhost:3001/rigrout.html** in a browser.
 
-The server must be running for the following features to work — they proxy state DOT/511 feeds that don't allow direct browser requests (no CORS headers on those government endpoints):
+`rigrout.html` calls its API relative to whatever host it was loaded from (`location.origin`) — there's no separate frontend/backend URL to configure. That means the exact same file works unmodified whether it's opened at `localhost:3001` in local dev or served from a real deployed domain later (see **Deploying**, below); it does *not* mean the app works without a server somewhere. A server — this one, running *somewhere* reachable at that origin — must be up for the following features to work, since they proxy state DOT/511 feeds that don't allow direct browser requests (no CORS headers on those government endpoints):
 
 - Live road ban feed panel (24 US/Canada regions)
 - DMS message signs
 - Road condition segments
 - Server-side route-risk audit
 
-Without the server running, the page still loads and basic truck-stop/rest-area/cardlock POI layers and truck-restriction markers work via direct client-side calls to the public Overpass API — but road bans, signs, conditions, and the route audit will not populate. The small dot next to the header indicates server status (green = connected).
+Without a server reachable at that origin, the page still loads and basic truck-stop/rest-area/cardlock POI layers and truck-restriction markers work via direct client-side calls to the public Overpass API — but road bans, signs, conditions, and the route audit will not populate. The small dot next to the header indicates server status (green = connected).
+
+## Deploying
+
+This is prep work for hosting the server somewhere other than your own machine — it makes the code ready to deploy, it doesn't deploy it for you (that needs your own hosting account).
+
+**Environment variables:**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `3001` | Port the server listens on. Most hosts (Render, Fly, etc.) set this for you automatically. |
+| `HOST` | `127.0.0.1` | Bind address. **Must be set to `0.0.0.0` to accept connections from outside the machine** — the default is loopback-only (safe for local dev, unreachable from anywhere else, which is exactly why this app couldn't be deployed before). |
+| `ADMIN_TOKEN` | unset | Required for production access to private/operator endpoints. Send it as `Authorization: Bearer <token>` with `POST` for restart/cache operations. |
+| `ALLOWED_ORIGINS` | unset | Optional comma-separated allowlist for a separately hosted frontend. Same-origin deployments need no value. |
+| `TOMTOM_API_KEY` | unset | Enables commercial truck routing and the TomTom supplemental incident feed. Without it, routes are explicitly labeled car-route previews. |
+| `BAN_KEY_*` | unset | Optional per-state developer keys — see "Live road ban feeds" below. |
+
+Copy `.env.example` to `.env` and fill in whichever keys you have (the server loads `.env` automatically if present — see top of `rigrout-server.js`).
+
+**Generic steps (Render, Fly.io, a VPS, or any Node host):**
+
+1. Push this repo to the host (git-based deploy on Render/Fly, or `git clone` on a VPS).
+2. Set `HOST=0.0.0.0` in that environment's config (Render/Fly: their dashboard or `fly.toml`/`render.yaml`; a bare VPS: your systemd unit's `Environment=` line or a `.env` file).
+3. Set `ADMIN_TOKEN` to a long random value in the host's secret manager.
+4. Set `PORT` only if your host requires a specific value — most PaaS hosts inject this automatically and you can leave it unset.
+5. Start command: `node rigrout-server.js` (or `npm start`).
+6. Point a domain at it if you have one; otherwise use whatever URL the host assigns.
+7. Open `https://<that-domain>/rigrout.html` — `API_BASE` will resolve to that same domain automatically, no further config needed.
+
+A minimal `Dockerfile` is included for hosts that deploy from a container image rather than a git push.
+
+**Two things that do *not* change when you deploy:**
+- `/api/feedback` (GET), `/api/restart`, and `/api/cache/clear` require the `ADMIN_TOKEN` bearer token whenever the server is bound for production. With the safe loopback-only default, local operator access works without a token unless one is configured.
+- None of this stands up a *truck-aware routing engine* — that's a separate, much larger project (see "What's implemented vs. not yet"). Deploying this server gets the live road-ban feeds, POI layers, and hazard/feedback reporting working for real visitors; it does not change what `planRoute()` does.
 
 ## What's implemented vs. not yet
 
@@ -34,7 +67,7 @@ Without the server running, the page still loads and basic truck-stop/rest-area/
 | Address/POI search, multi-stop planning, save/share routes | Implemented |
 | Truck stop / rest area / cardlock / weigh station / EV / border POI layers | Implemented (via OpenStreetMap/Overpass) |
 | Live road ban / DMS sign / road condition feeds (24 regions) | Implemented, **requires local server running** |
-| Route calculation with actual truck-dimension constraints (height/weight/width routing) | **Not yet implemented.** Routing currently uses OSRM's public car-routing demo endpoint. The "Route Risk Audit" panel checks the drawn route against restriction data *after the fact* — it does not yet reroute around conflicts. |
+| Route calculation with truck constraints | Implemented through the server-side TomTom Routing API when `TOMTOM_API_KEY` is configured. Height, width, length, weight, axle count, commercial status, toll preference, and US HazMat class are passed to truck mode. Without a key, the server returns an explicitly labeled OSRM car-route preview. |
 | Community hazard reports shared between drivers | Implemented, **requires local server running** to be visible to other drivers. Reports POST to `/api/incidents` and are pulled by every client hitting that server; if the server is unreachable, the report is saved to that browser's local storage only, and the UI says so. |
 | Feedback submission | Implemented. POSTs to `/api/feedback` on the local server (stored in `data/feedback.json`, gitignored). If the server is unreachable, feedback is queued in local storage and sent automatically once the server is detected. |
 | Offline / PWA support | Partial. The app shell (`rigrout.html`, CSS, marker-cluster JS) is cached by a service worker and installable to a home screen/desktop via `manifest.json`. Live data — road bans, DMS signs, conditions, feedback, hazard reports, map tiles, and routing — still requires a connection; none of that is cached, deliberately, so you never see stale restriction data believing it's current. |

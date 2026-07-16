@@ -676,8 +676,8 @@ select option{background:var(--bg);color:var(--text);padding:8px}
       <div style="display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:11px;color:var(--dim)">Distance &amp; Dimensions</span>
         <div class="toggle" style="font-size:12px;border-radius:6px">
-          <button class="on" id="u-imperial" onclick="setUnits('imperial')" style="padding:5px 13px;font-weight:600">Imperial</button>
-          <button id="u-metric" onclick="setUnits('metric')" style="padding:5px 13px;font-weight:600">Metric</button>
+          <button id="u-imperial" onclick="setUnits('imperial')" style="padding:5px 13px;font-weight:600">Imperial</button>
+          <button class="on" id="u-metric" onclick="setUnits('metric')" style="padding:5px 13px;font-weight:600">Metric</button>
         </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between">
@@ -694,10 +694,10 @@ select option{background:var(--bg);color:var(--text);padding:8px}
   <div class="sec">
     <div class="sec-title">Truck Profile</div>
     <div class="pgrid">
-      <div class="field"><label id="lbl-height">Height (ft)</label><input type="number" id="p-height" value="13.5" step="0.1" min="8" max="16" oninput="saveProfile()"></div>
-      <div class="field"><label id="lbl-width">Width (ft)</label><input type="number" id="p-width" value="8.5" step="0.1" min="6" max="12" oninput="saveProfile()"></div>
-      <div class="field"><label id="lbl-length">Length (ft)</label><input type="number" id="p-length" value="75" step="1" min="20" max="120" oninput="saveProfile()"></div>
-      <div class="field"><label id="lbl-weight">GVW (lbs)</label><input type="number" id="p-weight" value="80000" step="1000" min="10000" max="200000" oninput="saveProfile()"></div>
+      <div class="field"><label id="lbl-height">Height (m)</label><input type="number" id="p-height" value="4.11" step="0.01" min="2" max="5" oninput="saveProfile()"></div>
+      <div class="field"><label id="lbl-width">Width (m)</label><input type="number" id="p-width" value="2.59" step="0.01" min="1" max="4" oninput="saveProfile()"></div>
+      <div class="field"><label id="lbl-length">Length (m)</label><input type="number" id="p-length" value="22.9" step="0.1" min="5" max="40" oninput="saveProfile()"></div>
+      <div class="field"><label id="lbl-weight">GVW (kg)</label><input type="number" id="p-weight" value="36287" step="100" min="1000" max="100000" oninput="saveProfile()"></div>
       <div class="field"><label>Axles</label><input type="number" id="p-axles" value="5" min="2" max="9" oninput="saveProfile()"></div>
       <div class="field">
         <label>Trailer</label>
@@ -830,7 +830,7 @@ select option{background:var(--bg);color:var(--text);padding:8px}
   <!-- Data note -->
   <div class="note">
     <strong>⚠ MVP Preview</strong><br>
-    Routing via OSRM (no truck constraints yet). Stop data is simulated. Live road ban feeds active for BC, AB, SK, MB, ON + 7 US states. Always verify posted signs — driver compliance is your responsibility.
+    Commercial truck routing is active when the server has a TomTom API key; otherwise routes are clearly marked as car-route previews. Always verify posted signs — driver compliance is your responsibility.
   </div>
 
 </div><!-- /sidebar -->
@@ -1027,7 +1027,17 @@ const poiLayers = {
 };
 
 // ── Server API ───────────────────────────────────────────────────────────────
-const API_BASE = 'http://localhost:3001';
+// Same-origin by default: rigrout-server.js serves this HTML file AND the
+// /api/* routes from one process, so whatever host:port this page was loaded
+// from is also where its API lives — that's true whether that's
+// localhost:3001 in local dev or a real domain once this is actually
+// deployed. Previously this was hardcoded to 'http://localhost:3001', which
+// meant the app only ever worked when opened on the same machine running the
+// server, even if the server itself were hosted somewhere real.
+// Override by setting window.RIGROUT_API_BASE (a one-line <script> tag before
+// this file loads) only for the split-hosting case — e.g. this HTML served
+// from a static host/CDN while the API runs on a separate domain.
+const API_BASE = window.RIGROUT_API_BASE || location.origin;
 let serverAvailable = false;
 // Captures the in-flight detection promise so other init-time calls (like
 // fetchRoadBans below) can await the *result* of the same check instead of
@@ -1043,6 +1053,7 @@ async function detectServer() {
   if (ind) {
     ind.style.background = serverAvailable ? '#3DB87A' : '#888';
     ind.title = serverAvailable ? 'RigRout server running — server-side data active' : 'No local server — using direct APIs';
+    ind.setAttribute('aria-label', serverAvailable ? 'RigRout data server connected' : 'RigRout data server unavailable; using direct APIs');
   }
   if (serverAvailable) {
     flushFeedbackQueue();
@@ -1059,7 +1070,7 @@ setInterval(fetchSharedIncidents, 90000);
 // ── State ─────────────────────────────────────────────────────────────────────
 let originCoord = null, destCoord = null, loadStatus = 'loaded';
 let viaStops = []; // [{id, coord:[lat,lon], text:''}]
-let units = 'imperial'; // 'imperial' | 'metric'
+let units = 'metric'; // 'imperial' | 'metric'
 let tempUnit = 'F';    // 'F' | 'C'
 let _lastWxResults = null; // cache for re-render on unit switch
 let gcTimers = {};
@@ -2427,14 +2438,28 @@ async function planRoute() {
   try {
     var activeVia = viaStops.filter(function(s) { return s.coord; });
     var waypoints = [originCoord].concat(activeVia.map(function(s) { return s.coord; })).concat([destCoord]);
-    var waypointStr = waypoints.map(function(c) { return c[1] + ',' + c[0]; }).join(';');
-    var url = 'https://router.project-osrm.org/route/v1/driving/' + waypointStr +
-      '?overview=full&geometries=geojson&steps=true';
-    var r = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!r.ok) throw new Error('OSRM HTTP ' + r.status);
+    if (!serverAvailable) throw new Error('RigRout routing server unavailable');
+    var routeProfile = {
+      heightFt:getHeightFt(), widthFt:getWidthFt(), lengthFt:getLengthFt(),
+      weightLbs:getWeightLbs(), axles:+(document.getElementById('p-axles').value||5),
+      hazmat:document.getElementById('p-hazmat').value||'none',
+      trailer:document.getElementById('p-trailer').value||'53dry'
+    };
+    var r = await fetch(API_BASE + '/api/route', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({waypoints:waypoints, profile:routeProfile,
+        avoidTolls:!!document.getElementById('opt-tolls').checked}),
+      signal:AbortSignal.timeout(30000)
+    });
+    if (!r.ok) {
+      var routeError = await r.json().catch(function(){ return {}; });
+      throw new Error(routeError.error || ('Routing HTTP ' + r.status));
+    }
     var d = await r.json();
-    if (!d.routes || !d.routes[0]) throw new Error('No route found');
-    var route  = d.routes[0];
+    if (!d.route) throw new Error('No route found');
+    var route = d.route;
+    var truckConstrained = d.truckConstrained === true;
+    var routeModeLabel = truckConstrained ? 'Truck-constrained route' : 'Car-route preview';
     var distMi = (route.distance / 1609.34).toFixed(1);
     var distKm = (route.distance / 1000).toFixed(1);
     var hrs    = Math.floor(route.duration / 3600);
@@ -2443,7 +2468,7 @@ async function planRoute() {
 
     L.geoJSON(route.geometry, { style: { color:'#3DB87A', weight:5, opacity:0.85 } }).addTo(routeLayer);
     map.fitBounds(L.geoJSON(route.geometry).getBounds(), { padding:[30,30] });
-    setStatus('✅ ' + distLabel + ' · ' + hrs + 'h ' + mins + 'm');
+    setStatus((truckConstrained ? '🚛 ' : '⚠️ ') + routeModeLabel + ' · ' + distLabel + ' · ' + hrs + 'h ' + mins + 'm');
 
     // Stats panel
     var statsEl = document.getElementById('stats');
@@ -2463,7 +2488,9 @@ async function planRoute() {
       if (getHeightFt() > 13.5) risks.push({ cls:'warn', msg:'⚠️ Height ' + getHeightFt().toFixed(1) + 'ft may restrict certain overpasses. Check low-clearance alerts along route.' });
       if (getWeightLbs() > 80000) risks.push({ cls:'danger', msg:'🛑 GVW ' + (getWeightLbs()/1000).toFixed(0) + 'k lbs exceeds standard 80,000 lb limit. Permit may be required.' });
       if (loadStatus === 'loaded') risks.push({ cls:'info', msg:'ℹ️ Loaded configuration active. Weight distribution and braking distance increased.' });
-      risks.push({ cls:'ok', msg:'✅ Route calculated via OSRM. Server audit will apply truck-specific restrictions.' });
+      risks.push(truckConstrained
+        ? { cls:'ok', msg:'✅ Route calculated in commercial truck mode using the configured height, width, length, weight, axle, and HazMat profile.' }
+        : { cls:'danger', msg:'⚠️ PREVIEW ONLY: no truck-routing key is configured. This car route does not apply commercial vehicle constraints.' });
       riskEl.innerHTML = risks.map(function(rk) {
         return '<div class="risk ' + rk.cls + '"><div class="risk-msg">' + rk.msg + '</div></div>';
       }).join('');
@@ -2513,9 +2540,9 @@ async function planRoute() {
     if (spinner) spinner.style.display = 'none';
     fetchWeather();
     // Fetch all active POI layers along the full route corridor
-    setStatus('✅ ' + distLabel + ' · ' + hrs + 'h ' + mins + 'm · Loading stops…');
+    setStatus((truckConstrained ? '🚛 ' : '⚠️ ') + routeModeLabel + ' · ' + distLabel + ' · Loading stops…');
     fetchPOIsAlongRoute(L.geoJSON(route.geometry).getBounds()).then(function() {
-      setStatus('✅ ' + distLabel + ' · ' + hrs + 'h ' + mins + 'm');
+      setStatus((truckConstrained ? '🚛 ' : '⚠️ ') + routeModeLabel + ' · ' + distLabel + ' · ' + hrs + 'h ' + mins + 'm');
     });
   } catch(e) {
     if (spinner) spinner.style.display = 'none';
@@ -3078,7 +3105,7 @@ function loadProfile() {
     if (saved.trailer) document.getElementById('p-trailer').value = saved.trailer;
     if (saved.hazmat)  document.getElementById('p-hazmat').value  = saved.hazmat;
     // Now apply UI state — since units var already matches, setUnits won't convert values
-    setUnits(saved.units || 'imperial');
+    setUnits(saved.units || 'metric');
     setTempUnit(saved.tempUnit || 'F');
     if (saved.load && saved.load !== loadStatus) setLoad(saved.load);
   } catch(e) {}
@@ -3124,7 +3151,7 @@ planRoute = async function() {
   await _origPlanRoute.call(this);
   // After route renders, run server audit on the route bounds
   if (serverAvailable && routeLayer.getLayers().length > 0) {
-    var bounds = routeLayer.getBounds();
+    var bounds = L.featureGroup(routeLayer.getLayers()).getBounds();
     if (bounds && bounds.isValid()) {
       var serverRisks = await runServerRouteAudit(bounds);
       if (serverRisks && serverRisks.length) {
@@ -3132,16 +3159,16 @@ planRoute = async function() {
         if (riskEl) {
           // Add icon prefix based on severity
           var iconMap = { danger:'🛑 ', warn:'⚠️ ', info:'ℹ️ ', ok:'✅ ' };
-          riskEl.innerHTML = serverRisks.map(function(rk) {
+          riskEl.insertAdjacentHTML('beforeend', serverRisks.map(function(rk) {
             var prefix = iconMap[rk.cls] || '';
             return '<div class="risk ' + (rk.cls||'info') + '">' +
               '<div class="risk-msg">' + prefix + rk.msg + '</div>' +
               (rk.src?'<div class="risk-src">Source: '+rk.src+'</div>':'') +
               (rk.lat?'<div class="risk-src">📍 '+rk.lat.toFixed(4)+', '+rk.lon.toFixed(4)+'</div>':'') +
             '</div>';
-          }).join('');
+          }).join(''));
           // Refresh badge with server count
-          var critServer = serverRisks.filter(function(r){ return r.cls==='danger'||r.cls==='warn'; }).length;
+          var critServer = riskEl.querySelectorAll('.risk.danger, .risk.warn').length;
           var badge = document.getElementById('risk-count-badge');
           if (badge) { badge.textContent = critServer || ''; badge.style.display = critServer ? '' : 'none'; }
         }

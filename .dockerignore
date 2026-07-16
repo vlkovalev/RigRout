@@ -1,0 +1,11 @@
+node_modules/
+.git/
+.gitignore
+.env
+.env.example
+data/
+*.log
+.DS_Store
+Thumbs.db
+RigRout_PrePublish_Review.md
+README.md

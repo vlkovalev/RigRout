@@ -10,7 +10,7 @@
  * current — that's worse than no offline support at all. Offline mode here
  * means "the app shell loads," not "the data is available offline."
  */
-const CACHE_NAME = 'rigrout-shell-v1';
+const CACHE_NAME = 'rigrout-shell-v3';
 const SHELL_FILES = [
   './rigrout.html',
   './manifest.json',
@@ -56,17 +56,15 @@ self.addEventListener('fetch', function(event) {
   });
   if (!isShellFile) return;
 
+  // Network-first keeps deployed safety and data-handling fixes current.
+  // Fall back to the cached shell only when the network is unavailable.
   event.respondWith(
-    caches.match(req).then(function(cached) {
-      const networkFetch = fetch(req).then(function(resp) {
-        if (resp && resp.status === 200) {
-          const copy = resp.clone();
-          caches.open(CACHE_NAME).then(function(cache) { cache.put(req, copy); });
-        }
-        return resp;
-      }).catch(function() { return cached; });
-      // Cache-first for instant offline load; refresh cache in background.
-      return cached || networkFetch;
-    })
+    fetch(req).then(function(resp) {
+      if (resp && resp.status === 200) {
+        const copy = resp.clone();
+        caches.open(CACHE_NAME).then(function(cache) { cache.put(req, copy); });
+      }
+      return resp;
+    }).catch(function() { return caches.match(req); })
   );
 });

@@ -3,14 +3,21 @@
  * Run: node rigrout-server.js
  * Then open: http://localhost:3001/rigrout.html
  *
+ * Env vars:
+ *   PORT — defaults to 3001
+ *   HOST — defaults to 127.0.0.1 (loopback-only, local dev). Set HOST=0.0.0.0
+ *          to accept connections from outside the machine when actually
+ *          deploying (Render/Fly/a VPS) — see README "Deploying" section.
+ *
  * Endpoints:
  *   GET  /api/layers?types=stops,rest,bans,cameras,restrict&bbox=s,w,n,e
  *   POST /api/route-audit  body:{bbox,profile:{heightFt,widthFt,weightLbs,axles,hazmat,trailer}}
+ *   POST /api/route        body:{waypoints:[[lat,lon]],profile:{...},avoidTolls}
  *   GET  /api/signs        DMS/message signs
  *   GET  /api/conditions   road conditions (colored segments)
  *   GET  /api/status
- *   GET  /api/cache/clear   — local requests only (127.0.0.1/::1)
- *   GET  /api/restart       — local requests only (127.0.0.1/::1)
+ *   POST /api/cache/clear   — local dev or ADMIN_TOKEN bearer auth
+ *   POST /api/restart       — local dev or ADMIN_TOKEN bearer auth
  *   POST /api/feedback     body:{category,message,email}   — persisted to data/feedback.json
  *   GET  /api/feedback     — list stored feedback (local review only)
  *   POST /api/incidents    body:{type,note,lat,lon}         — shared hazard report, persisted to data/incidents.json
@@ -21,7 +28,13 @@ const https = require('https');
 const url   = require('url');
 const path  = require('path');
 const fs    = require('fs');
-const PORT  = process.env.PORT || 3001;
+// Binds to loopback-only by default — safe for local dev, but this is also
+// why the app couldn't be deployed anywhere real: a process bound to
+// 127.0.0.1 only accepts connections from the same machine, so it's
+// unreachable from outside a VM/container even once "hosted." Deploying
+// somewhere real (Render/Fly/a VPS) requires explicitly setting HOST=0.0.0.0
+// in that environment's config — left opt-in rather than the default so
+// nothing changes for anyone just running this locally.
 
 // Load environment variables from .env if present (zero-dependency)
 try {
@@ -43,6 +56,13 @@ try {
 } catch (e) {
   console.warn('  Failed to load .env file:', e.message);
 }
+
+// Read configuration only after the optional .env file has been loaded.
+const PORT = Number(process.env.PORT) || 3001;
+const HOST = process.env.HOST || '127.0.0.1';
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+const ALLOWED_ORIGINS = new Set((process.env.ALLOWED_ORIGINS || '')
+  .split(',').map(function(origin) { return origin.trim().replace(/\/$/, ''); }).filter(Boolean));
 
 // TTL Cache
 const _cache = new Map();
@@ -66,18 +86,23 @@ function writeJSON(file, data) {
 function handleFeedbackPost(req, res, body) {
   const msg = String(body.message || '').trim();
   if (!msg) return respond(res, 400, { error: 'message required' });
+  const categories = new Set(['bug','feature','data','ban','safety','general']);
+  const category = categories.has(body.category) ? body.category : 'general';
+  const email = String(body.email || '').trim().slice(0, 200);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return respond(res, 400, { error: 'invalid email' });
   const list = readJSON('feedback.json', []);
   const entry = {
     id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
     ts: Date.now(),
-    category: body.category || 'general',
+    category: category,
     message: msg.slice(0, 4000),
-    email: String(body.email || '').trim().slice(0, 200),
+    email: email,
   };
   list.unshift(entry);
   if (list.length > 1000) list.length = 1000;
   writeJSON('feedback.json', list);
-  console.log('  Feedback received [' + entry.category + ']: ' + msg.slice(0, 80));
+  console.log('  Feedback received [' + entry.category + ']');
   respond(res, 200, { ok: true, id: entry.id });
 }
 function handleFeedbackGet(req, res) {
@@ -93,15 +118,21 @@ function activeIncidents() {
 }
 function handleIncidentPost(req, res, body) {
   const type = String(body.type || '').trim();
-  if (!type) return respond(res, 400, { error: 'type required' });
+  const allowedTypes = new Set(['crash','debris','construction','weather','parking','bridge','weigh','police','other']);
+  if (!allowedTypes.has(type)) return respond(res, 400, { error: 'invalid incident type' });
+  const lat = body.lat == null ? null : Number(body.lat);
+  const lon = body.lon == null ? null : Number(body.lon);
+  if ((lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) ||
+      (lon !== null && (!Number.isFinite(lon) || lon < -180 || lon > 180)))
+    return respond(res, 400, { error: 'invalid coordinates' });
   const list = readJSON('incidents.json', []);
   const entry = {
     id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
     ts: Date.now(),
     type: type,
     note: String(body.note || '').trim().slice(0, 500),
-    lat: typeof body.lat === 'number' ? body.lat : null,
-    lon: typeof body.lon === 'number' ? body.lon : null,
+    lat: lat,
+    lon: lon,
     status: 'active',
   };
   list.unshift(entry);
@@ -987,12 +1018,19 @@ function normalizeRestriction(el) {
 
 // /api/layers
 async function handleLayers(req, res, query) {
-  const types   = (query.types||'').split(',').filter(Boolean);
+  const allowedTypes = new Set(['stops','cardlock','rest','weigh','repair','bans','ev','border','cameras','restrict']);
+  const types = (query.types||'').split(',').filter(Boolean);
+  if (!types.length || types.length > 6 || types.some(function(type){ return !allowedTypes.has(type); }))
+    return respond(res, 400, { error: 'Invalid layer types' });
   const bboxStr = query.bbox||'';
   let bounds = null;
   if (bboxStr) {
     const p = bboxStr.split(',').map(Number);
-    if (!isNaN(p[0])) bounds = { s:p[0], w:p[1], n:p[2], e:p[3] };
+    if (p.length !== 4 || p.some(function(v){ return !Number.isFinite(v); }) ||
+        p[0] < -90 || p[2] > 90 || p[1] < -180 || p[3] > 180 ||
+        p[0] >= p[2] || p[1] >= p[3] || p[2]-p[0] > 12 || p[3]-p[1] > 20)
+      return respond(res, 400, { error: 'Invalid or oversized bbox' });
+    bounds = { s:p[0], w:p[1], n:p[2], e:p[3] };
   }
   const layers = {};
   await Promise.allSettled(types.map(async function(type) {
@@ -1129,8 +1167,11 @@ async function handleRouteAudit(req, res, body) {
 
   if (!bbox) return respond(res, 400, { error: 'bbox required' });
   const parts = String(bbox).split(',').map(Number);
-  if (parts.some(isNaN)) return respond(res, 400, { error: 'Invalid bbox' });
+  if (parts.length !== 4 || parts.some(function(v){ return !Number.isFinite(v); }))
+    return respond(res, 400, { error: 'Invalid bbox' });
   const s=parts[0], w=parts[1], n=parts[2], e=parts[3];
+  if (s < -90 || n > 90 || w < -180 || e > 180 || s >= n || w >= e || n-s > 50 || e-w > 100)
+    return respond(res, 400, { error: 'Invalid or oversized bbox' });
 
   const heightM = (profile.heightFt  || 0) * 0.3048;
   const weightT = (profile.weightLbs || 0) / 2204.62;
@@ -1224,11 +1265,184 @@ async function handleRouteAudit(req, res, body) {
   respond(res, 200, { risks:risks, timestamp:new Date().toISOString() });
 }
 
+// Commercial route calculation. TomTom's truck mode considers the supplied
+// height, width, length, weight, axle count, commercial status, and HazMat
+// class. When no key is configured, return an explicitly marked OSRM preview
+// so the UI never misrepresents a car route as truck-constrained.
+async function handleRoute(req, res, body) {
+  const waypoints = Array.isArray(body.waypoints) ? body.waypoints : [];
+  if (waypoints.length < 2 || waypoints.length > 8)
+    return respond(res, 400, { error:'2 to 8 waypoints required' });
+  const points = waypoints.map(function(point) {
+    return Array.isArray(point) ? [Number(point[0]), Number(point[1])] : [NaN, NaN];
+  });
+  if (points.some(function(point) {
+    return !Number.isFinite(point[0]) || !Number.isFinite(point[1]) ||
+      point[0] < -90 || point[0] > 90 || point[1] < -180 || point[1] > 180;
+  })) return respond(res, 400, { error:'Invalid waypoints' });
+
+  const profile = body.profile || {};
+  const heightFt = Number(profile.heightFt);
+  const widthFt = Number(profile.widthFt);
+  const lengthFt = Number(profile.lengthFt);
+  const weightLbs = Number(profile.weightLbs);
+  const axles = Number(profile.axles);
+  if (![heightFt,widthFt,lengthFt,weightLbs,axles].every(Number.isFinite) ||
+      heightFt < 4 || heightFt > 20 || widthFt < 4 || widthFt > 16 ||
+      lengthFt < 8 || lengthFt > 150 || weightLbs < 1000 || weightLbs > 500000 ||
+      axles < 2 || axles > 20)
+    return respond(res, 400, { error:'Invalid truck profile' });
+
+  if (process.env.TOMTOM_API_KEY) {
+    const locations = points.map(function(point){ return point[0]+','+point[1]; }).join(':');
+    const params = new URLSearchParams({
+      key: process.env.TOMTOM_API_KEY,
+      travelMode: 'truck',
+      vehicleCommercial: 'true',
+      vehicleHeight: (heightFt * 0.3048).toFixed(2),
+      vehicleWidth: (widthFt * 0.3048).toFixed(2),
+      vehicleLength: (lengthFt * 0.3048).toFixed(2),
+      vehicleWeight: String(Math.round(weightLbs * 0.453592)),
+      vehicleNumberOfAxles: String(Math.round(axles)),
+      routeType: 'fastest',
+      traffic: 'true',
+      instructionsType: 'text',
+      language: 'en-US',
+      routeRepresentation: 'polyline',
+      computeTravelTimeFor: 'all'
+    });
+    if (body.avoidTolls) params.append('avoid', 'tollRoads');
+    const hazmat = String(profile.hazmat || 'none');
+    if (/^[1-9]$/.test(hazmat)) params.append('vehicleLoadType', 'USHazmatClass' + hazmat);
+    const endpoint = 'https://api.tomtom.com/routing/1/calculateRoute/' + locations + '/json?' + params.toString();
+    const data = JSON.parse(await serverFetch(endpoint, { timeout:25000 }));
+    const source = data.routes && data.routes[0];
+    if (!source) return respond(res, 502, { error:'Truck routing provider returned no route' });
+    const coordinates = [];
+    (source.legs || []).forEach(function(leg) {
+      (leg.points || []).forEach(function(point, index) {
+        if (coordinates.length && index === 0) return;
+        coordinates.push([point.longitude, point.latitude]);
+      });
+    });
+    const instructions = (source.guidance && source.guidance.instructions) || [];
+    let previousOffset = 0;
+    const steps = instructions.map(function(instruction) {
+      const offset = Number(instruction.routeOffsetInMeters) || previousOffset;
+      const distance = Math.max(0, offset - previousOffset);
+      previousOffset = offset;
+      return { distance:distance, name:instruction.message || instruction.street || 'Continue',
+        maneuver:{ instruction:instruction.message || instruction.street || 'Continue' } };
+    });
+    return respond(res, 200, { provider:'tomtom', truckConstrained:true,
+      route:{ distance:source.summary.lengthInMeters, duration:source.summary.travelTimeInSeconds,
+        geometry:{type:'LineString',coordinates:coordinates}, legs:[{steps:steps}] } });
+  }
+
+  const osrmPoints = points.map(function(point){ return point[1]+','+point[0]; }).join(';');
+  const endpoint = 'https://router.project-osrm.org/route/v1/driving/' + osrmPoints +
+    '?overview=full&geometries=geojson&steps=true';
+  const data = JSON.parse(await serverFetch(endpoint, { timeout:20000 }));
+  if (!data.routes || !data.routes[0]) return respond(res, 502, { error:'Preview routing provider returned no route' });
+  respond(res, 200, { provider:'osrm-preview', truckConstrained:false, route:data.routes[0],
+    warning:'Preview only: this route does not apply commercial vehicle constraints.' });
+}
+
 // HTTP helper
+const MAX_JSON_BODY_BYTES = 32 * 1024;
+const RATE_BUCKETS = new Map();
+const PUBLIC_FILES = new Map([
+  ['/', 'rigrout.html'],
+  ['/rigrout.html', 'rigrout.html'],
+  ['/manifest.json', 'manifest.json'],
+  ['/sw.js', 'sw.js'],
+  ['/icon.svg', 'icon.svg'],
+  ['/MarkerCluster.css', 'MarkerCluster.css'],
+  ['/MarkerCluster.Default.css', 'MarkerCluster.Default.css'],
+  ['/leaflet.markercluster.js', 'leaflet.markercluster.js']
+]);
+
+function clientAddress(req) {
+  return (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+
+function sameOrigin(req, origin) {
+  if (!origin) return true;
+  try {
+    const parsed = new URL(origin);
+    return parsed.host === req.headers.host || ALLOWED_ORIGINS.has(origin.replace(/\/$/, ''));
+  } catch (e) { return false; }
+}
+
+function rateLimit(req, res, scope, max, windowMs) {
+  const now = Date.now();
+  const key = scope + ':' + clientAddress(req);
+  let bucket = RATE_BUCKETS.get(key);
+  if (!bucket || bucket.resetAt <= now) bucket = { count: 0, resetAt: now + windowMs };
+  bucket.count += 1;
+  RATE_BUCKETS.set(key, bucket);
+  res.setHeader('RateLimit-Limit', String(max));
+  res.setHeader('RateLimit-Remaining', String(Math.max(0, max - bucket.count)));
+  res.setHeader('RateLimit-Reset', String(Math.ceil(bucket.resetAt / 1000)));
+  if (bucket.count <= max) return true;
+  res.setHeader('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000)));
+  respond(res, 429, { error: 'Too many requests' });
+  return false;
+}
+
+setInterval(function() {
+  const now = Date.now();
+  RATE_BUCKETS.forEach(function(bucket, key) {
+    if (bucket.resetAt <= now) RATE_BUCKETS.delete(key);
+  });
+}, 5 * 60 * 1000).unref();
+
+function readJsonBody(req, res, handler) {
+  let body = '';
+  let rejected = false;
+  req.on('data', function(chunk) {
+    if (rejected) return;
+    body += chunk;
+    if (Buffer.byteLength(body) > MAX_JSON_BODY_BYTES) {
+      rejected = true;
+      respond(res, 413, { error: 'Request body too large' });
+    }
+  });
+  req.on('end', function() {
+    if (rejected) return;
+    try { handler(JSON.parse(body || '{}')); }
+    catch (e) { respond(res, 400, { error: 'Bad JSON' }); }
+  });
+  req.on('error', function() {
+    if (!res.headersSent) respond(res, 400, { error: 'Request body error' });
+  });
+}
+
+function isAdminRequest(req) {
+  if (HOST !== '0.0.0.0' && isLocalRequest(req) && !ADMIN_TOKEN) return true;
+  const auth = String(req.headers.authorization || '');
+  if (!ADMIN_TOKEN || !auth.startsWith('Bearer ')) return false;
+  const supplied = Buffer.from(auth.slice(7));
+  const expected = Buffer.from(ADMIN_TOKEN);
+  return supplied.length === expected.length && require('crypto').timingSafeEqual(supplied, expected);
+}
+
+function securityHeaders() {
+  return {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self)',
+    'Cross-Origin-Resource-Policy': 'same-origin'
+  };
+}
+
 function respond(res, code, obj) {
   const body = JSON.stringify(obj);
-  res.writeHead(code, { 'Content-Type':'application/json',
-    'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Headers':'*', 'Cache-Control':'no-cache' });
+  const headers = Object.assign({ 'Content-Type':'application/json; charset=utf-8',
+    'Cache-Control':'no-store' }, securityHeaders());
+  if (res._corsOrigin) headers['Access-Control-Allow-Origin'] = res._corsOrigin;
+  res.writeHead(code, headers);
   res.end(body);
 }
 
@@ -1249,22 +1463,48 @@ function isLocalRequest(req) {
 const server = http.createServer(function(req, res) {
   const parsed   = url.parse(req.url, true);
   const pathname = parsed.pathname;
+  const origin = String(req.headers.origin || '');
+
+  if (!sameOrigin(req, origin)) return respond(res, 403, { error: 'Origin not allowed' });
+  if (origin) res._corsOrigin = origin;
 
   if (req.method==='OPTIONS') {
-    res.writeHead(204,{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'GET,POST'});
+    const headers = Object.assign({
+      'Access-Control-Allow-Methods':'GET,POST,OPTIONS',
+      'Access-Control-Allow-Headers':'Content-Type, Authorization',
+      'Access-Control-Max-Age':'600'
+    }, securityHeaders());
+    if (res._corsOrigin) headers['Access-Control-Allow-Origin'] = res._corsOrigin;
+    res.writeHead(204, headers);
     return res.end();
   }
 
-  if (pathname==='/api/layers')     return handleLayers(req,res,parsed.query).catch(function(e){respond(res,500,{error:e.message});});
-  if (pathname==='/api/signs')      return handleSigns(req,res).catch(function(e){respond(res,500,{error:e.message});});
-  if (pathname==='/api/conditions') return handleConditions(req,res).catch(function(e){respond(res,500,{error:e.message});});
-  if (pathname==='/api/cameras')    return handleLayers(req,res,Object.assign(parsed.query,{types:'cameras'})).catch(function(e){respond(res,500,{error:e.message});});
+  if (pathname.startsWith('/api/') && !rateLimit(req,res,'api',120,60*1000)) return;
+
+  if (pathname==='/api/layers') {
+    if (req.method!=='GET') return respond(res,405,{error:'GET required'});
+    return handleLayers(req,res,parsed.query).catch(function(e){respond(res,500,{error:'Layer request failed'}); console.warn(e.message);});
+  }
+  if (pathname==='/api/signs') {
+    if (req.method!=='GET') return respond(res,405,{error:'GET required'});
+    return handleSigns(req,res).catch(function(e){respond(res,500,{error:'Sign request failed'}); console.warn(e.message);});
+  }
+  if (pathname==='/api/conditions') {
+    if (req.method!=='GET') return respond(res,405,{error:'GET required'});
+    return handleConditions(req,res).catch(function(e){respond(res,500,{error:'Condition request failed'}); console.warn(e.message);});
+  }
+  if (pathname==='/api/cameras') {
+    if (req.method!=='GET') return respond(res,405,{error:'GET required'});
+    return handleLayers(req,res,Object.assign(parsed.query,{types:'cameras'})).catch(function(e){respond(res,500,{error:'Camera request failed'}); console.warn(e.message);});
+  }
   if (pathname==='/api/cache/clear') {
-    if (!isLocalRequest(req)) return respond(res,403,{error:'forbidden'});
+    if (req.method!=='POST') return respond(res,405,{error:'POST required'});
+    if (!isAdminRequest(req)) return respond(res,403,{error:'forbidden'});
     _cache.clear(); return respond(res,200,{cleared:true});
   }
   if (pathname==='/api/restart') {
-    if (!isLocalRequest(req)) return respond(res,403,{error:'forbidden'});
+    if (req.method!=='POST') return respond(res,405,{error:'POST required'});
+    if (!isAdminRequest(req)) return respond(res,403,{error:'forbidden'});
     respond(res,200,{restarting:true});
     setTimeout(function(){
       var cp=require('child_process');
@@ -1274,66 +1514,75 @@ const server = http.createServer(function(req, res) {
     return;
   }
 
-  if (pathname==='/api/status')     return respond(res,200,{status:'ok',version:'2.0',feeds:BAN_FEEDS.length,cacheEntries:_cache.size,uptime:process.uptime()|0});
+  if (pathname==='/api/status') {
+    if (req.method!=='GET') return respond(res,405,{error:'GET required'});
+    return respond(res,200,{status:'ok',version:'2.0',feeds:BAN_FEEDS.length,
+      routingMode:process.env.TOMTOM_API_KEY?'truck':'preview',cacheEntries:_cache.size,uptime:process.uptime()|0});
+  }
+
+  if (pathname==='/api/route') {
+    if (req.method!=='POST') return respond(res,405,{error:'POST required'});
+    if (!rateLimit(req,res,'route',30,60*1000)) return;
+    return readJsonBody(req,res,function(body){
+      handleRoute(req,res,body).catch(function(e){respond(res,502,{error:'Route calculation failed'}); console.warn(e.message);});
+    });
+  }
 
   if (pathname==='/api/route-audit') {
     if (req.method!=='POST') return respond(res,405,{error:'POST required'});
-    let body='';
-    req.on('data',function(d){body+=d;});
-    req.on('end',function(){
-      try {
-        handleRouteAudit(req,res,JSON.parse(body||'{}')).catch(function(e){respond(res,500,{error:e.message});});
-      } catch(e){ respond(res,400,{error:'Bad JSON'}); }
+    if (!rateLimit(req,res,'route-audit',30,60*1000)) return;
+    return readJsonBody(req,res,function(body){
+      handleRouteAudit(req,res,body).catch(function(e){respond(res,500,{error:'Route audit failed'}); console.warn(e.message);});
     });
-    return;
   }
 
   if (pathname==='/api/feedback') {
-    if (req.method==='GET') return handleFeedbackGet(req,res);
+    if (req.method==='GET') {
+      if (!isAdminRequest(req)) return respond(res,403,{error:'Forbidden'});
+      return handleFeedbackGet(req,res);
+    }
     if (req.method!=='POST') return respond(res,405,{error:'POST required'});
-    let body='';
-    req.on('data',function(d){body+=d;});
-    req.on('end',function(){
-      try { handleFeedbackPost(req,res,JSON.parse(body||'{}')); }
-      catch(e){ respond(res,400,{error:'Bad JSON'}); }
-    });
-    return;
+    if (!rateLimit(req,res,'feedback-write',10,15*60*1000)) return;
+    return readJsonBody(req,res,function(body){ handleFeedbackPost(req,res,body); });
   }
 
   if (pathname==='/api/incidents') {
     if (req.method==='GET') return handleIncidentGet(req,res);
     if (req.method!=='POST') return respond(res,405,{error:'POST required'});
-    let body='';
-    req.on('data',function(d){body+=d;});
-    req.on('end',function(){
-      try { handleIncidentPost(req,res,JSON.parse(body||'{}')); }
-      catch(e){ respond(res,400,{error:'Bad JSON'}); }
-    });
-    return;
+    if (!rateLimit(req,res,'incident-write',20,15*60*1000)) return;
+    return readJsonBody(req,res,function(body){ handleIncidentPost(req,res,body); });
   }
 
   // Never serve the raw data directory as static files — it holds feedback
   // (may include an email) and hazard reports. Only the /api endpoints above
   // may read/write it.
-  if (pathname==='/data' || pathname.indexOf('/data/') === 0) return respond(res,403,{error:'Forbidden'});
-
-  // Static files
-  const base = path.join(__dirname);
-  let filePath = path.join(base, pathname==='/'?'rigrout.html':pathname);
-  if (!filePath.startsWith(base)) return respond(res,403,{error:'Forbidden'});
-  if (!fs.existsSync(filePath))   return respond(res,404,{error:'Not found'});
+  const publicName = PUBLIC_FILES.get(pathname);
+  if (!publicName) return respond(res,404,{error:'Not found'});
+  const filePath = path.join(__dirname, publicName);
+  if (!fs.existsSync(filePath)) return respond(res,404,{error:'Not found'});
   const ext  = path.extname(filePath).toLowerCase();
   const mime = {'.html':'text/html','.js':'application/javascript','.css':'text/css',
     '.json':'application/json','.png':'image/png','.ico':'image/x-icon',
     '.svg':'image/svg+xml','.webmanifest':'application/manifest+json'}[ext]||'application/octet-stream';
-  res.writeHead(200,{'Content-Type':mime,'Access-Control-Allow-Origin':'*'});
+  const headers = Object.assign({'Content-Type':mime}, securityHeaders());
+  if (ext === '.html') {
+    headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: https:; connect-src 'self' https://*.openstreetmap.org https://*.openstreetmap.fr https://overpass.kumi.systems https://overpass-api.de https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.open-meteo.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; worker-src 'self'";
+  }
+  if (res._corsOrigin) headers['Access-Control-Allow-Origin'] = res._corsOrigin;
+  res.writeHead(200,headers);
   fs.createReadStream(filePath).pipe(res);
 });
 
-server.listen(PORT, '127.0.0.1', function() {
+server.listen(PORT, HOST, function() {
   console.log('\n  RigRout API server v2.0 ready!');
-  console.log('   Open  http://localhost:'+PORT+'/rigrout.html');
+  console.log('   Open  http://'+(HOST==='0.0.0.0'?'localhost':HOST)+':'+PORT+'/rigrout.html');
   console.log('');
+  if (HOST === '0.0.0.0') {
+    console.log('   ⚠ Bound to 0.0.0.0 — reachable from outside this machine.');
+    console.log('     Private operator endpoints require ADMIN_TOKEN.');
+    if (!ADMIN_TOKEN) console.log('     ADMIN_TOKEN is unset, so those endpoints are disabled.');
+    console.log('');
+  }
   console.log('   Endpoints:');
   console.log('   GET  /api/layers?types=stops,rest,bans,cameras&bbox=s,w,n,e');
   console.log('   POST /api/route-audit  {bbox, profile:{heightFt,widthFt,weightLbs,hazmat}}');

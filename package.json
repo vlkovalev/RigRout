@@ -7,7 +7,7 @@
     "start": "node rigrout-server.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "author": "",
   "license": "UNLICENSED",
