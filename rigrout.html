@@ -926,8 +926,8 @@ select option{background:var(--bg);color:var(--text);padding:8px}
 
   <!-- Bottom bar: Map / Satellite / Trucker Mode -->
   <div id="map-bottom-bar">
-    <button class="bbar-btn active" id="bbar-dark" onclick="switchLayerBar('dark')">🌑 Dark</button>
-    <button class="bbar-btn" id="bbar-street" onclick="switchLayerBar('street')">🗺 Map</button>
+    <button class="bbar-btn" id="bbar-dark" onclick="switchLayerBar('dark')">🌑 Dark</button>
+    <button class="bbar-btn active" id="bbar-street" onclick="switchLayerBar('street')">🗺 Map</button>
     <button class="bbar-btn" id="bbar-satellite" onclick="switchLayerBar('satellite')">🛰 Satellite</button>
     <button class="bbar-btn bbar-truck" id="trucker-mode-btn" onclick="toggleTruckerMode()">🚛 Trucker Mode</button>
   </div>
@@ -985,8 +985,8 @@ const TILE_LAYERS = {
 // Hybrid labels overlay (roads/names on top of satellite)
 const HYBRID_LABELS = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', { maxZoom:21, maxNativeZoom:19, opacity:.85 });
 
-let currentTileKey = 'dark';
-TILE_LAYERS.dark.addTo(map);
+let currentTileKey = 'street';
+TILE_LAYERS.street.addTo(map);
 
 // Layer switcher control
 const LayerSwitcher = L.Control.extend({
@@ -1004,7 +1004,7 @@ const LayerSwitcher = L.Control.extend({
       const btn = L.DomUtil.create('div','',div);
       btn.id = `lyr-${b.key}`;
       btn.innerHTML = b.label;
-      btn.style.cssText=`padding:5px 10px;font-size:10px;cursor:pointer;color:var(--dim);white-space:nowrap;transition:all .1s;${b.key==='dark'?'background:var(--blue);color:#fff':''}`;
+      btn.style.cssText=`padding:5px 10px;font-size:10px;cursor:pointer;color:var(--dim);white-space:nowrap;transition:all .1s;${b.key==='street'?'background:var(--blue);color:#fff':''}`;
       btn.onmouseenter=()=>{ if(currentTileKey!==b.key) btn.style.background='var(--surf2)'; };
       btn.onmouseleave=()=>{ if(currentTileKey!==b.key) btn.style.background=''; };
       L.DomEvent.on(btn,'click',L.DomEvent.stopPropagation);
