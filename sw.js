@@ -10,11 +10,12 @@
  * current — that's worse than no offline support at all. Offline mode here
  * means "the app shell loads," not "the data is available offline."
  */
-const CACHE_NAME = 'rigrout-shell-v3';
+const CACHE_NAME = 'rigrout-shell-v4';
 const SHELL_FILES = [
   './rigrout.html',
   './manifest.json',
   './icon.svg',
+  './mobile-config.js',
   './MarkerCluster.css',
   './MarkerCluster.Default.css',
   './leaflet.markercluster.js'

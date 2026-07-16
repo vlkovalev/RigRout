@@ -9,3 +9,10 @@ data/
 Thumbs.db
 RigRout_PrePublish_Review.md
 README.md
+android/
+ios/
+assets/
+scripts/
+www/
+MOBILE.md
+capacitor.config.json

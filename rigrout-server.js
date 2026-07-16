@@ -565,8 +565,7 @@ async function fetchTomTomBans(bounds) {
   if (!process.env.TOMTOM_API_KEY) return { items: [], feedStatus: {} };
 
   const qBounds = bounds || { s: 24.0, w: -125.0, n: 49.0, e: -66.0 };
-  const zoom = bounds ? 11 : 5;
-  const ck = 'bans_tomtom_' + qBounds.s.toFixed(2) + '_' + qBounds.w.toFixed(2) + '_' + qBounds.n.toFixed(2) + '_' + qBounds.e.toFixed(2) + '_' + zoom;
+  const ck = 'bans_tomtom_v5_' + qBounds.s.toFixed(2) + '_' + qBounds.w.toFixed(2) + '_' + qBounds.n.toFixed(2) + '_' + qBounds.e.toFixed(2);
   const cached = cacheGet(ck);
   if (cached) return cached;
 
@@ -574,36 +573,54 @@ async function fetchTomTomBans(bounds) {
   const minLat = qBounds.s;
   const maxLon = qBounds.e;
   const maxLat = qBounds.n;
-  const key = process.env.TOMTOM_API_KEY;
-  const url = 'https://api.tomtom.com/traffic/services/4/incidentDetails/socr/' +
-    minLon + ',' + minLat + ',' + maxLon + ',' + maxLat + '/' + zoom + '/json?key=' + key;
+  const params = new URLSearchParams({
+    key: process.env.TOMTOM_API_KEY,
+    bbox: [minLon, minLat, maxLon, maxLat].join(','),
+    fields: '{incidents{type,geometry{type,coordinates},properties{iconCategory,events{description},from,to,roadNumbers}}}',
+    language: 'en-US',
+    timeValidityFilter: 'present'
+  });
+  const url = 'https://api.tomtom.com/traffic/services/5/incidentDetails?' + params.toString();
 
   try {
-    console.log('  Fetching supplemental bans from TomTom API (zoom ' + zoom + ')...');
+    console.log('  Fetching supplemental bans from TomTom Traffic API v5...');
     const text = await serverFetch(url, { timeout: 15000 });
     const data = JSON.parse(text);
-    const pois = (data.tm && data.tm.poi) || [];
+    const incidents = Array.isArray(data.incidents) ? data.incidents : [];
 
-    const items = pois.map(function(poi, idx) {
+    const items = incidents.map(function(incident, idx) {
+      const props = incident.properties || {};
+      const geometry = incident.geometry || {};
+      const coordinates = geometry.type === 'Point'
+        ? geometry.coordinates
+        : (Array.isArray(geometry.coordinates) ? geometry.coordinates[0] : null);
+      if (!Array.isArray(coordinates) || !Number.isFinite(Number(coordinates[0])) ||
+          !Number.isFinite(Number(coordinates[1]))) return null;
+      const descriptions = (props.events || []).map(function(event) {
+        return event && event.description;
+      }).filter(Boolean);
+      const iconCategory = Number(props.iconCategory);
+      const title = iconCategory === 8 ? 'Road Closed' :
+        (iconCategory === 9 ? 'Roadwork' : (descriptions[0] || 'Traffic Event'));
       return {
-        id: 'bans_tomtom_' + idx + '_' + Date.now(),
+        id: 'bans_tomtom_' + (props.id || idx),
         type: 'bans',
-        lat: poi.p.y,
-        lon: poi.p.x,
-        title: poi.c === 'construction' ? 'Roadwork' : (poi.ic === 14 ? 'Road Closed' : 'Traffic Event'),
+        lat: Number(coordinates[1]),
+        lon: Number(coordinates[0]),
+        title: title,
         icon: 'ban',
         color: '#E05252',
         source: 'TomTom Live Traffic',
         updatedAt: new Date().toISOString(),
         props: {
-          description: poi.d,
-          road: poi.f || poi.t || 'Roadway',
+          description: descriptions.join('; ') || title,
+          road: (props.roadNumbers || []).join(', ') || props.from || props.to || 'Roadway',
           area: 'TomTom',
           feedKey: 'tomtom',
           feedName: 'TomTom Live Traffic'
         }
       };
-    });
+    }).filter(Boolean);
 
     const res = {
       items: items,
@@ -1359,7 +1376,8 @@ const PUBLIC_FILES = new Map([
   ['/icon.svg', 'icon.svg'],
   ['/MarkerCluster.css', 'MarkerCluster.css'],
   ['/MarkerCluster.Default.css', 'MarkerCluster.Default.css'],
-  ['/leaflet.markercluster.js', 'leaflet.markercluster.js']
+  ['/leaflet.markercluster.js', 'leaflet.markercluster.js'],
+  ['/mobile-config.js', 'mobile-config.js']
 ]);
 
 function clientAddress(req) {

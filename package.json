@@ -4,7 +4,11 @@
   "description": "RigRout - Commercial Route Intelligence. Truck stop / restriction data server plus a Leaflet-based route planning front end.",
   "main": "rigrout-server.js",
   "scripts": {
-    "start": "node rigrout-server.js"
+    "start": "node rigrout-server.js",
+    "mobile:prepare": "node scripts/prepare-mobile.mjs",
+    "mobile:sync": "npm run mobile:prepare && cap sync",
+    "mobile:android": "npm run mobile:sync && cap open android",
+    "mobile:ios": "npm run mobile:sync && cap open ios"
   },
   "engines": {
     "node": ">=22"
@@ -12,5 +16,12 @@
   "author": "",
   "license": "UNLICENSED",
   "private": true,
-  "dependencies": {}
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0"
+  }
 }
