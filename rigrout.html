@@ -950,11 +950,11 @@ const TILE_LAYERS = {
   street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution:'© <a href="https://www.openstreetmap.org/copyright">OSM contributors</a>', maxZoom:21, maxNativeZoom:19 }),
   satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution:'© Esri — Earthstar Geographics', maxZoom:21, maxNativeZoom:17 }),
+    attribution:'© Esri — Earthstar Geographics', maxZoom:21, maxNativeZoom:16 }),
   terrain: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
     attribution:'© <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)', maxZoom:21, maxNativeZoom:17 }),
   hybrid: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution:'© Esri', maxZoom:21, maxNativeZoom:17, opacity:1 }),
+    attribution:'© Esri', maxZoom:21, maxNativeZoom:16, opacity:1 }),
 };
 // Hybrid labels overlay (roads/names on top of satellite)
 const HYBRID_LABELS = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', { maxZoom:21, maxNativeZoom:19, opacity:.85 });

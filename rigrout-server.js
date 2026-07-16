@@ -61,8 +61,12 @@ try {
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST || '127.0.0.1';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
-const ALLOWED_ORIGINS = new Set((process.env.ALLOWED_ORIGINS || '')
-  .split(',').map(function(origin) { return origin.trim().replace(/\/$/, ''); }).filter(Boolean));
+const ALLOWED_ORIGINS = new Set([
+  'capacitor://localhost',
+  'https://localhost',
+  'http://localhost'
+].concat((process.env.ALLOWED_ORIGINS || '')
+  .split(',').map(function(origin) { return origin.trim().replace(/\/$/, ''); }).filter(Boolean)));
 
 // TTL Cache
 const _cache = new Map();
