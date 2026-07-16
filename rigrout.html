@@ -683,8 +683,8 @@ select option{background:var(--bg);color:var(--text);padding:8px}
       <div style="display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:11px;color:var(--dim)">Temperature</span>
         <div class="toggle" style="font-size:12px;border-radius:6px">
-          <button class="on" id="tu-f" onclick="setTempUnit('F')" style="padding:5px 14px;font-weight:600">°F</button>
-          <button id="tu-c" onclick="setTempUnit('C')" style="padding:5px 14px;font-weight:600">°C</button>
+          <button id="tu-f" onclick="setTempUnit('F')" style="padding:5px 14px;font-weight:600">°F</button>
+          <button class="on" id="tu-c" onclick="setTempUnit('C')" style="padding:5px 14px;font-weight:600">°C</button>
         </div>
       </div>
     </div>
@@ -1072,7 +1072,7 @@ setInterval(fetchSharedIncidents, 90000);
 let originCoord = null, destCoord = null, loadStatus = 'loaded';
 let viaStops = []; // [{id, coord:[lat,lon], text:''}]
 let units = 'metric'; // 'imperial' | 'metric'
-let tempUnit = 'F';    // 'F' | 'C'
+let tempUnit = 'C';    // 'F' | 'C'
 let _lastWxResults = null; // cache for re-render on unit switch
 let gcTimers = {};
 
@@ -3107,7 +3107,7 @@ function loadProfile() {
     if (saved.hazmat)  document.getElementById('p-hazmat').value  = saved.hazmat;
     // Now apply UI state — since units var already matches, setUnits won't convert values
     setUnits(saved.units || 'metric');
-    setTempUnit(saved.tempUnit || 'F');
+    setTempUnit(saved.tempUnit || 'C');
     if (saved.load && saved.load !== loadStatus) setLoad(saved.load);
   } catch(e) {}
 }
