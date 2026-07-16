@@ -1390,6 +1390,8 @@ const RATE_BUCKETS = new Map();
 const PUBLIC_FILES = new Map([
   ['/', 'rigrout.html'],
   ['/rigrout.html', 'rigrout.html'],
+  ['/privacy', 'privacy.html'],
+  ['/privacy.html', 'privacy.html'],
   ['/manifest.json', 'manifest.json'],
   ['/sw.js', 'sw.js'],
   ['/icon.svg', 'icon.svg'],

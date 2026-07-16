@@ -5,3 +5,7 @@ Thumbs.db
 data/
 .env
 www/
+*.jks
+*.keystore
+.env.android-signing
+android/signing.properties

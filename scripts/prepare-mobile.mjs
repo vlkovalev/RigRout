@@ -21,6 +21,7 @@ const assets = [
   'MarkerCluster.Default.css',
   'leaflet.markercluster.js',
   'manifest.json',
+  'privacy.html',
   'icon.svg',
   'sw.js'
 ];
