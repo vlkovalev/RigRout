@@ -5,6 +5,7 @@
   "main": "rigrout-server.js",
   "scripts": {
     "start": "node rigrout-server.js",
+    "test": "node --test",
     "mobile:prepare": "node scripts/prepare-mobile.mjs",
     "mobile:sync": "npm run mobile:prepare && cap sync",
     "mobile:android": "npm run mobile:sync && cap open android",
@@ -23,6 +24,7 @@
     "@capacitor/ios": "^8.0.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.0.0"
+    "@capacitor/cli": "^8.0.0",
+    "playwright": "^1.61.1"
   }
 }

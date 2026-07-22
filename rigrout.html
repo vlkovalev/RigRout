@@ -318,6 +318,9 @@ select option{background:var(--bg);color:var(--text);padding:8px}
 
 /* ── Map Bottom Bar (Map/Satellite/Trucker Mode) ── */
 #map-bottom-bar{position:absolute;bottom:0;left:50%;transform:translateX(-50%);z-index:820;display:flex;align-items:center;gap:0;background:var(--surf);border:1px solid var(--border);border-bottom:none;border-radius:10px 10px 0 0;overflow:hidden;box-shadow:0 -2px 12px rgba(0,0,0,.45)}
+.drive-hud{position:absolute;z-index:825;top:14px;left:50%;transform:translateX(-50%);width:min(620px,calc(100% - 24px));background:rgba(15,20,24,.94);border:1px solid rgba(255,255,255,.18);border-radius:12px;color:#fff;box-shadow:0 5px 20px rgba(0,0,0,.5);padding:12px 14px;display:none}
+.drive-hud.on{display:block}.drive-hud-top{display:flex;align-items:center;gap:12px}.drive-next{font-size:18px;font-weight:800;line-height:1.25;flex:1}.drive-distance{font-size:25px;font-weight:800;color:#7dd3fc;white-space:nowrap}.drive-meta{display:flex;gap:14px;color:#cbd5e1;font-size:12px;margin-top:7px}.drive-alerts{margin-top:9px;display:flex;flex-direction:column;gap:5px}.drive-alert{padding:7px 9px;border-radius:6px;background:rgba(245,166,35,.16);border-left:3px solid #f5a623;font-size:12px}.drive-exit{border:1px solid rgba(255,255,255,.3);background:transparent;color:#fff;border-radius:6px;padding:7px 9px;cursor:pointer}.offroute-card{display:none;margin-top:9px;padding:9px;background:rgba(224,82,82,.2);border:1px solid #e05252;border-radius:7px;font-size:13px}.offroute-card.on{display:flex;align-items:center;justify-content:space-between;gap:10px}.offroute-card button{background:#e05252;border:0;color:#fff;border-radius:5px;padding:7px 10px;font-weight:700}
+body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving #layers-panel,body.driving #mobile-toggle,body.driving #panel{display:none!important}body.driving #map-wrap{height:100vh!important}body.driving #map-bottom-bar{display:none}body.driving #gps-btn{display:none}
 .bbar-btn{height:44px;padding:0 20px;font-size:14px;font-weight:600;background:transparent;color:var(--dim);border:none;cursor:pointer;transition:all .15s;white-space:nowrap;display:flex;align-items:center;justify-content:center}
 .bbar-btn:hover{background:var(--surf2);color:var(--text)}
 .bbar-btn.active{background:var(--pine-lt);color:#fff}
@@ -422,10 +425,29 @@ select option{background:var(--bg);color:var(--text);padding:8px}
   #share-hbtn {
     display: none;
   }
+  /* Even with logo-sub/badge/share hidden, GPS+Report+Feedback+Route Audit+
+     HazMat+server-dot don't reliably fit a phone-width header — shrink them
+     and add horizontal scroll as a safety net so a button (e.g. Route Audit)
+     is never simply clipped and unreachable. */
+  #header {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+  }
+  #header .hbtn-fb,
+  #header .hbtn {
+    padding: 7px 10px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  #header .logo {
+    flex-shrink: 0;
+  }
   #map-bottom-bar .bbar-btn {
     padding: 9px 12px;
     font-size: 12px;
   }
+  .drive-hud{top:8px;width:calc(100% - 16px);padding:11px}.drive-next{font-size:16px}.drive-distance{font-size:21px}.drive-meta{font-size:11px}
   .sheet-handle {
     display: block;
     width: 120px;
@@ -510,22 +532,25 @@ select option{background:var(--bg);color:var(--text);padding:8px}
 <body>
 
 <!-- ── Disclaimer Modal ── -->
-<div class="modal-overlay" id="disclaimer-overlay">
+<div class="modal-overlay" id="disclaimer-overlay" role="dialog" aria-modal="true" aria-labelledby="disclaimer-title" aria-describedby="disclaimer-body">
   <div class="modal-box" style="max-height:92vh;display:flex;flex-direction:column">
     <div class="modal-head" style="flex-shrink:0">
-      <div class="modal-logo">Rig<em>Rout</em></div>
+      <div class="modal-logo" id="disclaimer-title">Rig<em>Rout</em></div>
       <div class="modal-subtitle">Route Planning &amp; Restriction Data — Terms of Use</div>
     </div>
-    <!-- Accept bar always visible at top — no scrolling required -->
+    <!-- Accept bar visible at top, but the button stays disabled (see
+         disclaimerScrollGate below) until the user scrolls the terms body
+         to the bottom — so it's reachable without scrolling but not
+         actionable without reading past this point first. -->
     <div style="padding:12px 20px;background:rgba(44,125,160,.12);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:10px">
-      <button class="btn-enter" onclick="acceptDisclaimer()" style="width:auto;padding:9px 22px;flex-shrink:0">Enter RigRout →</button>
+      <button class="btn-enter" id="disclaimer-accept-btn" onclick="acceptDisclaimer()" disabled autofocus style="width:auto;padding:9px 22px;flex-shrink:0">Enter RigRout →</button>
       <span style="font-size:11px;color:var(--dim);line-height:1.4">By entering you confirm this tool is for informational use only and you remain responsible for all route compliance and safe operation.</span>
     </div>
-    <div class="modal-body" style="overflow-y:auto;flex:1">
+    <div class="modal-body" id="disclaimer-body" style="overflow-y:auto;flex:1">
       <h3>Informational Use Only</h3>
       <p>RigRout is a routing assistance tool intended to support — not replace — the professional judgment of commercial vehicle operators. All route data, road ban feeds, and stop information are for informational purposes only.</p>
       <h3>No Guarantee of Accuracy</h3>
-      <p>Road conditions, bridge clearances, weight restrictions, and seasonal bans may be incomplete, delayed, or inaccurate. Data comes from OSRM, OpenStreetMap, and provincial/state 511 feeds which may not reflect current ground conditions.</p>
+      <p>Road conditions, bridge clearances, weight restrictions, and seasonal bans may be incomplete, delayed, or inaccurate. Truck routing is powered by TomTom where available, with an OpenStreetMap/OSRM preview as a fallback; map tiles are provided by Esri, OpenStreetMap, CARTO, or OpenTopoMap depending on the selected map style; restriction data comes from provincial/state 511 feeds. None of these sources may reflect current ground conditions.</p>
       <h3>Driver &amp; Operator Responsibility</h3>
       <ul>
         <li>You are solely responsible for complying with all posted signs, weight limits, bridge clearances, permit requirements, and applicable laws.</li>
@@ -534,6 +559,8 @@ select option{background:var(--bg);color:var(--text);padding:8px}
       </ul>
       <h3>Limitation of Liability</h3>
       <p>RigRout and its developers accept no liability for accidents, fines, permit violations, cargo damage, delays, or any losses arising from use of this application. Use at your own risk.</p>
+      <p style="margin-top:14px"><a href="https://rigrout.com/privacy" target="_blank" rel="noopener" style="color:var(--blue-lt)">Privacy Policy</a></p>
+      <p id="disclaimer-scroll-end" style="color:var(--dim);font-size:11px;margin-top:10px">— End of terms — scroll up to review, then Enter RigRout above.</p>
     </div>
   </div>
 </div>
@@ -633,7 +660,7 @@ select option{background:var(--bg);color:var(--text);padding:8px}
   </div>
 </div>
 
-<div id="app">
+<div id="app" inert>
 
 <!-- Header -->
 <div id="header">
@@ -648,7 +675,7 @@ select option{background:var(--bg);color:var(--text);padding:8px}
   <button class="hbtn-fb" onclick="openFeedback()">💬 Feedback</button>
   <button class="hbtn" onclick="togglePanel()">⚡ Route Audit <span id="risk-count-badge" class="risk-cnt" style="display:none"></span></button>
   <div id="hazmat-badge" onclick="document.getElementById('p-hazmat').focus()" title="HazMat active — click to edit" role="button" tabindex="0" aria-label="HazMat active — click to edit HazMat setting">⚠ HAZMAT</div>
-  <div class="badge">v2 · OSM Data</div>
+  <div class="badge" id="tile-attr-badge">v2 · Esri Data</div>
   <div id="server-dot" title="Checking server…" role="status" aria-label="Local data server status: checking" style="width:8px;height:8px;border-radius:50%;background:#888;flex-shrink:0;margin-left:4px;cursor:help" onclick="detectServer()"></div>
 </div>
 
@@ -865,8 +892,29 @@ select option{background:var(--bg);color:var(--text);padding:8px}
 <div id="map-wrap" style="position:relative">
   <div id="map"></div>
   <div id="statusbar">Enter origin and destination to plan a route</div>
-  <button id="gps-btn" onclick="toggleGPS()" title="My Location">📍</button>
+  <button id="gps-btn" onclick="toggleGPS()" title="My Location" aria-label="My Location">📍</button>
   <button id="mobile-toggle" onclick="toggleMobileSidebar()">☰ Menu</button>
+
+  <section id="drive-hud" class="drive-hud" aria-live="polite" aria-label="Driving mode">
+    <div class="drive-hud-top">
+      <div>
+        <div id="drive-distance" class="drive-distance">—</div>
+        <div style="font-size:10px;color:#94a3b8;text-transform:uppercase">to next instruction</div>
+      </div>
+      <div id="drive-next" class="drive-next">Follow the highlighted route</div>
+      <button class="drive-exit" onclick="stopDrivingMode()" aria-label="Exit Driving Mode">✕</button>
+    </div>
+    <div class="drive-meta">
+      <span id="drive-remaining">— remaining</span>
+      <span id="drive-eta">ETA —</span>
+      <span id="drive-gps">Waiting for GPS</span>
+    </div>
+    <div id="drive-alerts" class="drive-alerts"></div>
+    <div id="offroute-card" class="offroute-card">
+      <span id="offroute-message">You appear to be off route.</span>
+      <button onclick="rerouteFromCurrentPosition()">Reroute</button>
+    </div>
+  </section>
 
   <!-- Layers button + floating panel -->
   <button id="layers-btn" onclick="toggleLayersPanel()">☰ Layers</button>
@@ -926,9 +974,10 @@ select option{background:var(--bg);color:var(--text);padding:8px}
 
   <!-- Bottom bar: Map / Satellite / Trucker Mode -->
   <div id="map-bottom-bar">
-    <button class="bbar-btn" id="bbar-dark" onclick="switchLayerBar('dark')">🌑 Dark</button>
-    <button class="bbar-btn active" id="bbar-street" onclick="switchLayerBar('street')">🗺 Map</button>
-    <button class="bbar-btn" id="bbar-satellite" onclick="switchLayerBar('satellite')">🛰 Satellite</button>
+    <button class="bbar-btn active" id="bbar-auto" onclick="switchLayerBar('auto')">🌗 Auto</button>
+    <button class="bbar-btn" id="bbar-street" onclick="switchLayerBar('street')">🗺 Map</button>
+    <button class="bbar-btn" id="bbar-satellite" onclick="switchLayerBar('hybrid')">🛰 Satellite</button>
+    <button class="bbar-btn bbar-truck" id="drive-mode-btn" onclick="startDrivingMode()" disabled>▶ Drive</button>
     <button class="bbar-btn bbar-truck" id="trucker-mode-btn" onclick="toggleTruckerMode()">🚛 Trucker Mode</button>
   </div>
   <div id="trucker-mode-badge">🚛 TRUCKER MODE ON</div>
@@ -982,10 +1031,21 @@ const TILE_LAYERS = {
   hybrid: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution:'© Esri', maxZoom:21, maxNativeZoom:17, opacity:1 }),
 };
-// Hybrid labels overlay (roads/names on top of satellite)
-const HYBRID_LABELS = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', { maxZoom:21, maxNativeZoom:19, opacity:.85 });
+// Esri reference overlays turn the imagery into a true hybrid map: the
+// transportation layer draws road lines/numbers and the reference layer adds
+// city, community, highway and other place labels above the imagery.
+const HYBRID_LABELS = L.layerGroup([
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {
+    attribution:'Roads and labels © Esri', maxZoom:21, maxNativeZoom:19
+  }),
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    attribution:'Places © Esri', maxZoom:21, maxNativeZoom:19
+  })
+]);
 
 let currentTileKey = 'street';
+let autoMapMode = false;
+let autoMapCoords = null;
 TILE_LAYERS.street.addTo(map);
 
 // Layer switcher control
@@ -1001,9 +1061,13 @@ const LayerSwitcher = L.Control.extend({
       {key:'terrain',label:'⛰ Terrain'},
     ];
     btns.forEach(b => {
-      const btn = L.DomUtil.create('div','',div);
+      const btn = L.DomUtil.create('div','tile-style-btn',div);
       btn.id = `lyr-${b.key}`;
       btn.innerHTML = b.label;
+      btn.setAttribute('role','button');
+      btn.setAttribute('tabindex','0');
+      btn.setAttribute('aria-label', b.label.replace(/[^\x00-\x7F]/g, '').trim() + ' map style');
+      btn.setAttribute('aria-pressed', b.key==='street' ? 'true' : 'false');
       btn.style.cssText=`padding:5px 10px;font-size:10px;cursor:pointer;color:var(--dim);white-space:nowrap;transition:all .1s;${b.key==='street'?'background:var(--blue);color:#fff':''}`;
       btn.onmouseenter=()=>{ if(currentTileKey!==b.key) btn.style.background='var(--surf2)'; };
       btn.onmouseleave=()=>{ if(currentTileKey!==b.key) btn.style.background=''; };
@@ -1015,21 +1079,99 @@ const LayerSwitcher = L.Control.extend({
 });
 new LayerSwitcher({position:'topright'}).addTo(map);
 
-function switchLayer(key) {
+// Short attribution label per basemap — keeps the header badge accurate
+// instead of a static "OSM Data" that was wrong for every mode but Dark.
+const TILE_ATTR_SHORT = { dark:'OSM/CARTO', street:'Esri', satellite:'Esri', hybrid:'Esri', terrain:'OpenTopoMap' };
+
+function switchLayer(key, keepAuto) {
+  if (!keepAuto) {
+    autoMapMode = false;
+    try { localStorage.setItem('rigrout_map_mode', key); } catch(e) {}
+  }
   // Remove old
   TILE_LAYERS[currentTileKey].remove();
-  if (currentTileKey==='hybrid') HYBRID_LABELS.remove();
+  if (currentTileKey==='hybrid' || currentTileKey==='satellite') HYBRID_LABELS.remove();
   // Add new
   TILE_LAYERS[key].addTo(map);
-  if (key==='hybrid') HYBRID_LABELS.addTo(map);
+  if (key==='hybrid' || key==='satellite') HYBRID_LABELS.addTo(map);
   currentTileKey = key;
+  var attrBadge = document.getElementById('tile-attr-badge');
+  if (attrBadge) attrBadge.textContent = 'v2 · ' + (TILE_ATTR_SHORT[key]||key) + ' Data';
   // Update button styles
-  document.querySelectorAll('[id^="lyr-"]').forEach(b=>{
+  document.querySelectorAll('.tile-style-btn').forEach(b=>{
     const k = b.id.replace('lyr-','');
     b.style.background = k===key?'var(--blue)':'';
     b.style.color = k===key?'#fff':'var(--dim)';
+    b.setAttribute('aria-pressed', k===key ? 'true' : 'false');
+  });
+  // Update bottom bar styles
+  ['auto','dark','street','satellite','hybrid','terrain'].forEach(function(k) {
+    var b = document.getElementById('bbar-'+k);
+    if (b) {
+      var isActive = (k==='auto' && autoMapMode) || (!autoMapMode && ((k===key) || (k==='satellite' && key==='hybrid') || (k==='hybrid' && key==='satellite')));
+      b.classList.toggle('active', isActive);
+    }
   });
 }
+
+// Automatic day/night map mode. With an available location, sunrise and
+// sunset are calculated locally (no tracking request or weather API needed).
+// Until location permission has already been granted, the phone's system
+// light/dark preference is used as a privacy-friendly fallback.
+function isDaylightAt(lat, lon, now) {
+  now = now || new Date();
+  var start = new Date(now.getFullYear(), 0, 0);
+  var day = Math.floor((now - start) / 86400000);
+  var declination = -23.44 * Math.cos((2 * Math.PI / 365) * (day + 10));
+  var latRad = lat * Math.PI / 180;
+  var decRad = declination * Math.PI / 180;
+  var cosHour = -Math.tan(latRad) * Math.tan(decRad);
+  if (cosHour <= -1) return true;
+  if (cosHour >= 1) return false;
+  var daylightHours = 2 * Math.acos(cosHour) * 180 / Math.PI / 15;
+  var solarNoon = 12 - lon / 15 - now.getTimezoneOffset() / 60;
+  var hour = now.getHours() + now.getMinutes() / 60;
+  return hour >= solarNoon - daylightHours / 2 && hour < solarNoon + daylightHours / 2;
+}
+
+function applyAutomaticMap() {
+  if (!autoMapMode) return;
+  var daylight = autoMapCoords
+    ? isDaylightAt(autoMapCoords.lat, autoMapCoords.lon, new Date())
+    : !window.matchMedia('(prefers-color-scheme: dark)').matches;
+  switchLayer(daylight ? 'street' : 'dark', true);
+  var autoBtn = document.getElementById('bbar-auto');
+  if (autoBtn) {
+    autoBtn.classList.add('active');
+    autoBtn.textContent = daylight ? '☀️ Auto' : '🌙 Auto';
+    autoBtn.setAttribute('aria-label', 'Automatic map mode, currently ' + (daylight ? 'day' : 'night'));
+  }
+}
+
+function enableAutomaticMap() {
+  autoMapMode = true;
+  try { localStorage.setItem('rigrout_map_mode', 'auto'); } catch(e) {}
+  applyAutomaticMap();
+}
+
+function initAutomaticMap() {
+  var saved = 'auto';
+  try { saved = localStorage.getItem('rigrout_map_mode') || 'auto'; } catch(e) {}
+  if (saved !== 'auto' && TILE_LAYERS[saved]) { switchLayer(saved); return; }
+  enableAutomaticMap();
+  if (navigator.permissions && navigator.geolocation) {
+    navigator.permissions.query({name:'geolocation'}).then(function(permission) {
+      if (permission.state !== 'granted') return;
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        autoMapCoords = {lat:pos.coords.latitude, lon:pos.coords.longitude};
+        applyAutomaticMap();
+      }, function(){}, {maximumAge:3600000, timeout:5000});
+    }).catch(function(){});
+  }
+}
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyAutomaticMap);
+setInterval(applyAutomaticMap, 300000);
 
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -1101,6 +1243,14 @@ let units = 'metric'; // 'imperial' | 'metric'
 let tempUnit = 'C';    // 'F' | 'C'
 let _lastWxResults = null; // cache for re-render on unit switch
 let gcTimers = {};
+let activeRoute = null;
+let activeRoutePoints = [];      // [{lat,lon,cumulativeM}]
+let activeRouteSteps = [];       // flattened maneuver list
+let drivingModeOn = false;
+let lastDriverPosition = null;
+let offRouteSamples = 0;
+let routeRestrictionItems = [];
+let routeBanItems = [];
 
 // ── Unit conversions ──────────────────────────────────────────────────────────
 const FT_TO_M  = 0.3048;
@@ -1306,8 +1456,33 @@ function closePanel() {
   if (p) p.classList.remove('open');
 }
 
+// ── Android hardware Back button ───────────────────────────────────────────
+// Called from MainActivity.onBackPressed() via evaluateJavascript (see
+// android/.../MainActivity.java). Closes the topmost open UI — modal, form,
+// route panel, then the sidebar menu — instead of letting Android fall
+// through to its default "exit to launcher" behavior. Returns true if
+// something was closed (native side should swallow the back press), false if
+// nothing was open (native side proceeds with its default back behavior).
+window.handleAndroidBack = function() {
+  if (drivingModeOn) { stopDrivingMode(); return true; }
+  var feedback = document.getElementById('feedback-overlay');
+  if (feedback && !feedback.classList.contains('hidden')) { closeFeedback(); return true; }
+  var incident = document.getElementById('incident-overlay');
+  if (incident && !incident.classList.contains('hidden')) { closeIncident(); return true; }
+  var addStop = document.getElementById('custom-stop-form');
+  if (addStop && addStop.style.display === 'block') { closeAddStop(); return true; }
+  var panel = document.getElementById('panel');
+  if (panel && panel.classList.contains('open')) { closePanel(); return true; }
+  var sidebar = document.getElementById('sidebar');
+  if (sidebar && sidebar.classList.contains('mobile-open')) { toggleMobileSidebar(); return true; }
+  return false;
+};
+
 // ── Clear route ───────────────────────────────────────────────────────────────
 function clearAll() {
+  stopDrivingMode();
+  activeRoute=null;activeRoutePoints=[];activeRouteSteps=[];
+  var driveBtn=document.getElementById('drive-mode-btn');if(driveBtn)driveBtn.disabled=true;
   originCoord = null; destCoord = null;
   viaStops = [];
   renderViaStops();
@@ -1717,6 +1892,34 @@ function renderCustomStops() {
 }
 
 // ── GPS tracking ──────────────────────────────────────────────────────────────
+// Driving mode uses the dense route geometry already returned by the routing
+// service, so progress/off-route checks do not require another paid API.
+function geoDistanceM(a,b){var r=Math.PI/180,d1=(b.lat-a.lat)*r,d2=(b.lon-a.lon)*r,x=Math.sin(d1/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(d2/2)**2;return 6371000*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function indexActiveRoute(route){
+  activeRoute=route; activeRouteSteps=(route.legs||[]).reduce(function(a,l){return a.concat(l.steps||[]);},[]);
+  var total=0,coords=route.geometry&&route.geometry.coordinates||[]; activeRoutePoints=[];
+  coords.forEach(function(c,i){var p={lat:+c[1],lon:+c[0],cumulativeM:total};if(i){total+=geoDistanceM(activeRoutePoints[i-1],p);p.cumulativeM=total;}activeRoutePoints.push(p);});
+  var b=document.getElementById('drive-mode-btn');if(b)b.disabled=activeRoutePoints.length<2;
+}
+function nearestRoutePosition(lat,lon){var h={lat:lat,lon:lon},best=null;activeRoutePoints.forEach(function(p,i){var d=geoDistanceM(h,p);if(!best||d<best.distanceM)best={index:i,distanceM:d,progressM:p.cumulativeM};});return best;}
+function formatDriveDistance(m){if(!Number.isFinite(m))return '—';if(units==='metric')return m<1000?Math.max(10,Math.round(m/10)*10)+' m':(m/1000).toFixed(m<10000?1:0)+' km';var ft=m/.3048,mi=m/1609.34;return mi<.2?Math.max(50,Math.round(ft/50)*50)+' ft':mi.toFixed(mi<10?1:0)+' mi';}
+function collectAheadAlerts(progress){
+  var c=[];function add(items,type,icon){(items||[]).forEach(function(x){var lat=+(x.lat!=null?x.lat:x.latitude),lon=+(x.lon!=null?x.lon:x.longitude);if(Number.isFinite(lat)&&Number.isFinite(lon))c.push({lat:lat,lon:lon,icon:icon,label:x.title||x.headline||x.name||x.road||type});});}
+  add(routeRestrictionItems,'Truck restriction','⛔');add(routeBanItems,'Road ban','🚫');add(incidents,'Reported hazard','⚠️');add(poiCache.weigh,'Weigh station','⚖️');add(poiCache.border,'Border crossing','🛡️');
+  return c.map(function(x){var n=nearestRoutePosition(x.lat,x.lon);if(!n||n.distanceM>3000)return null;x.aheadM=n.progressM-progress;return x.aheadM>=-100&&x.aheadM<=50000?x:null;}).filter(Boolean).sort(function(a,b){return a.aheadM-b.aheadM;}).slice(0,3);
+}
+function updateDrivingMode(lat,lon,accuracy){
+  if(!drivingModeOn||!activeRoute)return;var n=nearestRoutePosition(lat,lon);if(!n)return;lastDriverPosition={lat:lat,lon:lon,accuracy:accuracy||0};
+  var total=activeRoutePoints[activeRoutePoints.length-1].cumulativeM||activeRoute.distance,remaining=Math.max(0,total-n.progressM),speed=activeRoute.duration>0?activeRoute.distance/activeRoute.duration:20,eta=new Date(Date.now()+remaining/speed*1000),sum=0,next=null,before=0;
+  for(var i=0;i<activeRouteSteps.length;i++){sum+=+(activeRouteSteps[i].distance||0);if(sum>=n.progressM){next=activeRouteSteps[i];before=sum-n.progressM;break;}}
+  document.getElementById('drive-next').textContent=next&&next.maneuver&&next.maneuver.instruction||next&&next.name||'Continue on the highlighted route';document.getElementById('drive-distance').textContent=formatDriveDistance(before);document.getElementById('drive-remaining').textContent=formatDriveDistance(remaining)+' remaining';document.getElementById('drive-eta').textContent='ETA '+eta.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});document.getElementById('drive-gps').textContent='GPS ±'+Math.round(accuracy||0)+' m';
+  var box=document.getElementById('drive-alerts');box.innerHTML='';collectAheadAlerts(n.progressM).forEach(function(a){var row=document.createElement('div');row.className='drive-alert';row.textContent=a.icon+' '+formatDriveDistance(a.aheadM)+' ahead · '+a.label;box.appendChild(row);});
+  var allowed=Math.max(250,(accuracy||0)*2);offRouteSamples=n.distanceM>allowed?offRouteSamples+1:0;var off=document.getElementById('offroute-card');off.classList.toggle('on',offRouteSamples>=3);if(offRouteSamples>=3)document.getElementById('offroute-message').textContent='You are '+formatDriveDistance(n.distanceM)+' off route.';map.setView([lat,lon],Math.max(map.getZoom(),14),{animate:true});
+}
+function startDrivingMode(){if(!activeRoutePoints.length){setStatus('Plan a route before starting Driving Mode');return;}drivingModeOn=true;offRouteSamples=0;document.body.classList.add('driving');document.getElementById('drive-hud').classList.add('on');setTimeout(function(){map.invalidateSize();},50);if(!gpsWatcher)toggleGPS();setStatus('Driving Mode started');}
+function stopDrivingMode(){drivingModeOn=false;offRouteSamples=0;document.body.classList.remove('driving');document.getElementById('drive-hud').classList.remove('on');var o=document.getElementById('offroute-card');if(o)o.classList.remove('on');setTimeout(function(){map.invalidateSize();},50);}
+async function rerouteFromCurrentPosition(){if(!lastDriverPosition){setStatus('Waiting for a current GPS position');return;}originCoord=[lastDriverPosition.lat,lastDriverPosition.lon];var i=document.getElementById('inp-origin');if(i)i.value='Current location';offRouteSamples=0;document.getElementById('offroute-card').classList.remove('on');await planRoute();if(activeRoutePoints.length)startDrivingMode();}
+
 let gpsWatcher = null;
 let gpsMarker  = null;
 function toggleGPS() {
@@ -1732,6 +1935,8 @@ function toggleGPS() {
     if (btn) btn.textContent = '📍 …';
     gpsWatcher = navigator.geolocation.watchPosition(pos => {
       const { latitude: lat, longitude: lng } = pos.coords;
+      autoMapCoords = {lat:lat, lon:lng};
+      applyAutomaticMap();
       const icon = L.divIcon({ className:'', html:'<div style="width:14px;height:14px;background:#3DB87A;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 3px rgba(61,184,122,.35)"></div>', iconSize:[14,14], iconAnchor:[7,7] });
       if (!gpsMarker) {
         gpsMarker = L.marker([lat, lng], { icon }).addTo(map);
@@ -1740,10 +1945,18 @@ function toggleGPS() {
         gpsMarker.setLatLng([lat, lng]);
       }
       gpsMarker.setIcon(icon);
+      updateDrivingMode(lat, lng, pos.coords.accuracy);
       if (btn) { btn.classList.add('on'); btn.textContent = '📍 Live'; }
     }, err => {
       if (btn) { btn.classList.remove('on'); btn.textContent = '📍 GPS'; }
-      setStatus('GPS error: ' + (err.message || 'denied'));
+      var friendly = err.code === 1
+        ? 'Location access is off. Enable it in your phone\'s Settings → Apps → RigRout → Permissions → Location, then try again.'
+        : err.code === 2
+        ? 'Couldn\'t determine your location. Try again in an area with a clearer GPS/network signal.'
+        : err.code === 3
+        ? 'Location request timed out. Try again.'
+        : 'Couldn\'t get your location. Try again.';
+      setStatus(friendly);
     }, { enableHighAccuracy: true });
   }
 }
@@ -2213,15 +2426,48 @@ function setStatus(msg) {
 }
 
 // ── Disclaimer ────────────────────────────────────────────────────────────────
+// While the disclaimer is showing, the rest of the app must be unreachable —
+// not just visually (it's under the overlay) but for keyboard/TalkBack users
+// too, who can otherwise tab/swipe straight past it into map controls hidden
+// behind the backdrop. `inert` removes #app from both focus and accessibility
+// traversal in one step (well-supported in the Chromium WebView Capacitor uses).
+function setAppInert(isInert) {
+  var app = document.getElementById('app');
+  if (!app) return;
+  if (isInert) app.setAttribute('inert', ''); else app.removeAttribute('inert');
+}
 function checkDisclaimer() {
   const modal = document.getElementById('disclaimer-overlay');
   if (!modal) return;
-  try { if (localStorage.getItem('rigrout_disclaimer')) modal.classList.add('hidden'); } catch(e) {}
+  var alreadyAccepted = false;
+  try { alreadyAccepted = !!localStorage.getItem('rigrout_disclaimer'); } catch(e) {}
+  if (alreadyAccepted) {
+    modal.classList.add('hidden');
+    setAppInert(false);
+    return;
+  }
+  setAppInert(true);
+  // Require actually scrolling through the terms before "Enter RigRout" is
+  // clickable — it starts disabled (see the button's HTML) and only enables
+  // once the terms body is scrolled near its end. If the terms already fit
+  // on screen with nothing to scroll, don't gate on a scroll that can't happen.
+  var body = document.getElementById('disclaimer-body');
+  var btn = document.getElementById('disclaimer-accept-btn');
+  if (body && btn) {
+    var maybeEnable = function() {
+      if (body.scrollHeight - body.scrollTop - body.clientHeight < 24) btn.disabled = false;
+    };
+    if (body.scrollHeight <= body.clientHeight + 4) btn.disabled = false;
+    else body.addEventListener('scroll', maybeEnable);
+  }
 }
 function acceptDisclaimer() {
+  const btn = document.getElementById('disclaimer-accept-btn');
+  if (btn && btn.disabled) return;
   // Hide FIRST — never let localStorage errors block entry
   const modal = document.getElementById('disclaimer-overlay');
   if (modal) modal.classList.add('hidden');
+  setAppInert(false);
   try { localStorage.setItem('rigrout_disclaimer', '1'); } catch(e) {}
 }
 
@@ -2249,8 +2495,12 @@ function useMyLocation() {
     checkReady();
     setStatus('📍 Current location set as origin');
   }, err => {
-    const msgs = { 1:'Location permission denied', 2:'Position unavailable', 3:'Location request timed out' };
-    setStatus('📍 ' + (msgs[err.code] || 'Could not get location'));
+    const msgs = {
+      1:'Location access is off. Enable it in Settings → Apps → RigRout → Permissions → Location.',
+      2:'Couldn\'t determine your location. Try again in an area with a clearer GPS/network signal.',
+      3:'Location request timed out. Try again.'
+    };
+    setStatus('📍 ' + (msgs[err.code] || 'Couldn\'t get your location. Try again.'));
   }, { enableHighAccuracy: true, timeout: 10000 });
 }
 
@@ -2436,6 +2686,7 @@ async function fetchRestrictionsAlongRoute(windows) {
     if (seen.has(key)) return false;
     seen.add(key); return true;
   });
+  routeRestrictionItems=merged.slice();
   renderRestrictionItems(merged);
   setFtagBadge('restrict',merged.length?String(merged.length):'');
 }
@@ -2545,6 +2796,7 @@ async function planRoute() {
     var d = await r.json();
     if (!d.route) throw new Error('No route found');
     var route = d.route;
+    indexActiveRoute(route);
     var truckConstrained = d.truckConstrained === true;
     var routeModeLabel = truckConstrained ? 'Truck-constrained route' : 'Car-route preview';
     var distMi = (route.distance / 1609.34).toFixed(1);
@@ -2744,7 +2996,28 @@ async function fetchRoadBans() {
       var r = await fetch(API_BASE+'/api/layers?types=bans&bbox='+bbox, { signal:AbortSignal.timeout(35000) });
       var d = await r.json();
       var allBans = (d.layers&&d.layers.bans)||[];
+      routeBanItems = allBans.slice();
       var feedStatus = (d.layers&&d.layers._banFeedStatus)||{};
+      // All known feed keys, regardless of which status branch renders below —
+      // used to tell "confirmed clear" apart from "some sources unknown/failed"
+      // when there are zero bans (a trucking app must never present unchecked
+      // feeds as a confirmed-clear route).
+      var canada  = ['bc','ab','on'];
+      var usNW    = ['wa','or','id','mt'];
+      var usPlain = ['nd','sd','wy','mn','wi'];
+      var usMid   = ['mi','oh','ia','ne','mo','il'];
+      var usSouth = ['tx','ks','co','ut','pa','ny'];
+      var allFeedKeys = canada.concat(usNW, usPlain, usMid, usSouth);
+      var uncheckedCount, erroredCount, totalFeedCount;
+      if (feedStatus.tomtom) {
+        uncheckedCount = feedStatus.tomtom.status==='ok' ? 0 : (feedStatus.tomtom.status==='error' ? 0 : 1);
+        erroredCount   = feedStatus.tomtom.status==='error' ? 1 : 0;
+        totalFeedCount = 1;
+      } else {
+        uncheckedCount = allFeedKeys.filter(function(k){ var s=(feedStatus[k]||{}).status; return s!=='ok' && s!=='error'; }).length;
+        erroredCount   = allFeedKeys.filter(function(k){ return (feedStatus[k]||{}).status==='error'; }).length;
+        totalFeedCount = allFeedKeys.length;
+      }
       // Render source status from server response
       if (sourcesEl) {
         if (feedStatus.tomtom) {
@@ -2759,11 +3032,6 @@ async function fetchRoadBans() {
             '<span class="ban-src-count '+cl+'">'+ct+'</span>'+
             '</div>';
         } else {
-          var canada  = ['bc','ab','on'];
-          var usNW    = ['wa','or','id','mt'];
-          var usPlain = ['nd','sd','wy','mn','wi'];
-          var usMid   = ['mi','oh','ia','ne','mo','il'];
-          var usSouth = ['tx','ks','co','ut','pa','ny'];
           function sRow(key) {
             var fs = feedStatus[key]||{};
             var ct = fs.status==='ok' ? (fs.bans&&fs.bans.length ? fs.bans.length+' ⚠':'✓') : (fs.status==='error'?'✕':'?');
@@ -2799,9 +3067,9 @@ async function fetchRoadBans() {
       if (totalEl) { if (allBans.length) { totalEl.textContent=allBans.length+' active'; totalEl.style.display=''; } else totalEl.style.display='none'; }
       // Convert to renderBans format
       var banCards = allBans.map(function(b){ return { headline:b.title, desc:(b.props&&b.props.description)||'', road:(b.props&&b.props.road)||'', area:(b.props&&b.props.area)||'', feedName:b.source, feedColor:b.color, feedUrl:'', lat:b.lat, lon:b.lon }; });
-      renderBans(banCards);
+      renderBans(banCards, { uncheckedCount:uncheckedCount, erroredCount:erroredCount, totalFeedCount:totalFeedCount });
       poiLayers.bans.clearLayers();
-      allBans.forEach(function(b){ if(b.lat&&b.lon){ L.circleMarker([b.lat,b.lon],{radius:8,color:b.color,fillColor:b.color,fillOpacity:0.75,weight:2}).bindPopup('<strong>'+b.title+'</strong><br>'+(b.props&&b.props.road||'')+' '+(b.props&&b.props.area||'')+'<br><em>'+b.source+'</em>').addTo(poiLayers.bans); } });
+      allBans.forEach(function(b){ if(b.lat&&b.lon){ L.marker([b.lat,b.lon],{icon:makePinIcon(b.color,'🚫')}).bindPopup('<strong>'+b.title+'</strong><br>'+(b.props&&b.props.road||'')+' '+(b.props&&b.props.area||'')+'<br><em>'+b.source+'</em>').addTo(poiLayers.bans); } });
       return;
     } catch(e) { console.warn('Server ban fetch failed:', e.message); }
   }
@@ -2822,11 +3090,21 @@ async function fetchRoadBans() {
   poiLayers.bans.clearLayers();
 }
 
-function renderBans(bans) {
+function renderBans(bans, status) {
   var el = document.getElementById('ban-feed-list');
   if (!el) return;
   if (!bans.length) {
-    el.innerHTML = '<div style="color:var(--dim);font-size:11px;padding:6px 0">No active restrictions found across all feeds.</div>';
+    var unchecked = status && status.uncheckedCount || 0;
+    var errored   = status && status.erroredCount || 0;
+    var unverified = unchecked + errored;
+    // Zero bans is only "confirmed clear" if every feed actually reported in —
+    // never say "no restrictions" when some sources are unknown/unreachable,
+    // since a trucking app presenting unchecked data as confirmed-clear is unsafe.
+    el.innerHTML = unverified
+      ? '<div style="color:var(--amber);font-size:11px;padding:6px 8px;background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.25);border-radius:5px;line-height:1.4">'+
+        '⚠ No confirmed restrictions right now, but '+unverified+' of '+(status.totalFeedCount||unverified)+' feed'+(unverified===1?'':'s')+' could not be checked (unavailable or timed out). '+
+        'Do not treat this as an all-clear — verify those regions directly before you go.</div>'
+      : '<div style="color:var(--dim);font-size:11px;padding:6px 0">No active restrictions found — all feeds confirmed current.</div>';
     return;
   }
   // Group by feed source
@@ -3143,11 +3421,8 @@ function toggleTruckerMode() {
 
 // ── Bottom bar tile switcher ──────────────────────────────────────────────────
 function switchLayerBar(key) {
-  switchLayer(key); // calls existing function
-  ['dark','street','satellite','hybrid','terrain'].forEach(function(k) {
-    var b = document.getElementById('bbar-'+k);
-    if (b) b.classList.toggle('active', k===key);
-  });
+  if (key === 'auto') enableAutomaticMap();
+  else switchLayer(key);
 }
 
 // ── Mobile sidebar toggle ─────────────────────────────────────────────────────
@@ -3398,6 +3673,7 @@ fetchSharedIncidents();
 fetchRoadBans();
 loadProfile();
 updateHazmatBadge();
+initAutomaticMap();
 // Sync layer panel checkboxes with initial poiVisible state
 (function() {
   Object.keys(poiVisible).forEach(function(t) {
@@ -3419,7 +3695,8 @@ document.addEventListener('keydown', function(e) {
   if (!el) return;
   var isFtag    = el.classList && el.classList.contains('ftag');
   var isHazmat  = el.id === 'hazmat-badge';
-  if (!isFtag && !isHazmat) return;
+  var isTileBtn = el.classList && el.classList.contains('tile-style-btn');
+  if (!isFtag && !isHazmat && !isTileBtn) return;
   e.preventDefault();
   el.click();
 });

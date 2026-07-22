@@ -984,8 +984,17 @@ async function fetchBansLayer(bounds) {
   ]);
   const stateResult = results[0];
   const tomtomResult = results[1];
+  // fetchStateBanFeeds() fetches and caches every state/province feed
+  // nationwide (it has no concept of the caller's viewport) — filter down to
+  // the requested bounds here, same as fetchCamerasLayer does, so a small-area
+  // request doesn't ship hundreds of out-of-region bans to the client. When
+  // bounds is omitted (e.g. the route-audit caller, which does its own
+  // corridor-specific filtering) the full nationwide set still passes through.
+  const stateItems = bounds
+    ? stateResult.items.filter(function(b){ return b.lat!=null && b.lon!=null && b.lat>=bounds.s && b.lat<=bounds.n && b.lon>=bounds.w && b.lon<=bounds.e; })
+    : stateResult.items;
   return {
-    items: stateResult.items.concat(tomtomResult.items),
+    items: stateItems.concat(tomtomResult.items),
     feedStatus: Object.assign({}, stateResult.feedStatus, tomtomResult.feedStatus)
   };
 }
@@ -1086,7 +1095,13 @@ async function handleLayers(req, res, query) {
       const q = '[out:json][timeout:20];(way["maxheight"]('+bbox+');way["maxweight"]('+bbox+');way["hgv"="no"]('+bbox+'););out center tags;';
       const data = await overpassFetch(q);
       const items = (data.elements||[]).map(normalizeRestriction).filter(Boolean);
-      cacheSet(ck, items, 30*60*1000);
+      // Don't cache an empty result for the full 30m — Overpass's public
+      // mirrors fail/timeout often enough that an empty result is much more
+      // likely to mean "Overpass was down" than "genuinely nothing here",
+      // and a 30m stale-empty cache would keep hiding real data long after
+      // Overpass recovers. Short TTL on empty so a retry soon after actually
+      // re-checks instead of replaying the outage.
+      cacheSet(ck, items, items.length ? 30*60*1000 : 60*1000);
       layers.restrict = items;
       return;
     }
@@ -1099,7 +1114,10 @@ async function handleLayers(req, res, query) {
     const data = await overpassFetch(q);
     const pts = (data.elements||[]).map(function(el){ return normalizePOI(el,type); }).filter(Boolean);
     console.log('  OK ' + type + ': ' + pts.length + ' points');
-    cacheSet(ck, pts, 30*60*1000);
+    // Same reasoning as the restrict cache above — don't let a transient
+    // Overpass outage's empty result masquerade as "no stops/rest areas
+    // exist here" for a full 30 minutes.
+    cacheSet(ck, pts, pts.length ? 30*60*1000 : 60*1000);
     layers[type] = pts;
   }));
   respond(res, 200, { layers:layers, timestamp:new Date().toISOString() });
