@@ -193,6 +193,16 @@ function serverFetch(urlStr, opts, _redirects) {
   });
 }
 
+// Attach a feed-specific API key without exposing it to the browser. Keeping
+// this in one place ensures every resource from a keyed provider is handled
+// consistently, including URLs that do not yet have a query string.
+function withFeedApiKey(feed, urlStr) {
+  if (!feed || !feed.keyEnv || !process.env[feed.keyEnv]) return urlStr;
+  const keyedUrl = new URL(urlStr);
+  keyedUrl.searchParams.set(feed.keyParam || 'key', process.env[feed.keyEnv]);
+  return keyedUrl.toString();
+}
+
 // Overpass with 3-endpoint fallback
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
@@ -675,18 +685,12 @@ async function fetchStateBanFeeds() {
       // feed override that. Also handles the URL not already having a `?`
       // (OHGO's base construction URL has no query string at all, so a hardcoded
       // `&key=` would have produced an invalid `...construction&key=...` URL).
-      const withKey = function(u) {
-        if (!feed.keyEnv || !process.env[feed.keyEnv]) return u;
-        const param = feed.keyParam || 'key';
-        const sep = u.indexOf('?') === -1 ? '?' : '&';
-        return u + sep + param + '=' + encodeURIComponent(process.env[feed.keyEnv]);
-      };
       // A feed's url can be an array (e.g. North Dakota's load restrictions are
       // split across separate NE/SW ArcGIS layers with no single combined
       // endpoint) — fetch each and merge their `.features` before parsing.
       let data;
       if (Array.isArray(feed.url)) {
-        const bodies = await Promise.all(feed.url.map(function(u) { return serverFetch(withKey(u), { timeout:12000 }); }));
+        const bodies = await Promise.all(feed.url.map(function(u) { return serverFetch(withFeedApiKey(feed, u), { timeout:12000 }); }));
         data = { features: [] };
         bodies.forEach(function(text) {
           if (!text.trim() || text.trim()[0]==='<') return;
@@ -697,7 +701,7 @@ async function fetchStateBanFeeds() {
         // A handful of state platforms (Minnesota's GraphQL API) need a POST
         // with a JSON body rather than a plain GET — feed.method/body/headers
         // pass straight through to serverFetch, which already supports both.
-        const text = await serverFetch(withKey(feed.url), { timeout:12000, method:feed.method, body:feed.body, headers:feed.headers });
+        const text = await serverFetch(withFeedApiKey(feed, feed.url), { timeout:12000, method:feed.method, body:feed.body, headers:feed.headers });
         if (!text.trim() || text.trim()[0]==='<') throw new Error('Non-JSON');
         data = JSON.parse(text);
       }
@@ -1003,7 +1007,7 @@ async function fetchBansLayer(bounds) {
 const DOT_CAMERA_FEEDS = [
   { key:'bc', name:'BC DriveBC',     url:'https://api.open511.gov.bc.ca/cameras?format=json&limit=500', parser:'open511cam' },
   { key:'ab', name:'Alberta 511',    url:'https://511.alberta.ca/api/v2/get/camera?format=json', parser:'ibi511cam' },
-  { key:'id', name:'Idaho 511',      url:'https://511.idaho.gov/api/v2/get/camera?format=json', parser:'ibi511cam' },
+  { key:'id', name:'Idaho 511',      url:'https://511.idaho.gov/api/v2/get/camera?format=json', parser:'ibi511cam', keyEnv:'BAN_KEY_ID' },
   { key:'mt', name:'Montana DOT',    url:'https://511.mt.gov/api/v2/get/camera?format=json', parser:'ibi511cam' },
   { key:'wa', name:'Washington DOT', url:'https://511wa.gov/api/v2/get/camera?format=json', parser:'ibi511cam' },
 ];
@@ -1015,7 +1019,7 @@ async function fetchCamerasLayer(bounds) {
   const items = [];
   await Promise.allSettled(DOT_CAMERA_FEEDS.map(async function(feed) {
     try {
-      const text = await serverFetch(feed.url, { timeout:10000 });
+      const text = await serverFetch(withFeedApiKey(feed, feed.url), { timeout:10000 });
       if (!text.trim() || text.trim()[0]==='<') return;
       const data = JSON.parse(text);
       let cams = [];
@@ -1127,7 +1131,7 @@ async function handleLayers(req, res, query) {
 const DMS_FEEDS = [
   { key:'bc', name:'BC DriveBC',     url:'https://api.open511.gov.bc.ca/events?format=json&event_type=CONSTRUCTION&limit=200', parser:'open511sign' },
   { key:'ab', name:'Alberta 511',    url:'https://511.alberta.ca/api/v2/get/sign?format=json', parser:'ibi511sign' },
-  { key:'id', name:'Idaho 511',      url:'https://511.idaho.gov/api/v2/get/sign?format=json', parser:'ibi511sign' },
+  { key:'id', name:'Idaho 511',      url:'https://511.idaho.gov/api/v2/get/sign?format=json', parser:'ibi511sign', keyEnv:'BAN_KEY_ID' },
   { key:'mt', name:'Montana DOT',    url:'https://511.mt.gov/api/v2/get/sign?format=json', parser:'ibi511sign' },
   { key:'wa', name:'Washington DOT', url:'https://511wa.gov/api/v2/get/sign?format=json', parser:'ibi511sign' },
 ];
@@ -1139,7 +1143,7 @@ async function handleSigns(req, res) {
   const items = [];
   await Promise.allSettled(DMS_FEEDS.map(async function(feed) {
     try {
-      const text = await serverFetch(feed.url, { timeout:10000 });
+      const text = await serverFetch(withFeedApiKey(feed, feed.url), { timeout:10000 });
       if (!text.trim() || text.trim()[0]==='<') return;
       const data = JSON.parse(text);
       let signs = [];
@@ -1168,7 +1172,7 @@ async function handleSigns(req, res) {
 const COND_FEEDS = [
   { key:'bc', name:'BC DriveBC',     url:'https://api.open511.gov.bc.ca/events?format=json&event_type=ROAD_CONDITION&limit=300', parser:'open511cond' },
   { key:'ab', name:'Alberta 511',    url:'https://511.alberta.ca/api/v2/get/roadCondition?format=json', parser:'ibi511cond' },
-  { key:'id', name:'Idaho 511',      url:'https://511.idaho.gov/api/v2/get/roadCondition?format=json', parser:'ibi511cond' },
+  { key:'id', name:'Idaho 511',      url:'https://511.idaho.gov/api/v2/get/roadCondition?format=json', parser:'ibi511cond', keyEnv:'BAN_KEY_ID' },
   { key:'mt', name:'Montana DOT',    url:'https://511.mt.gov/api/v2/get/roadCondition?format=json', parser:'ibi511cond' },
   { key:'wa', name:'Washington DOT', url:'https://511wa.gov/api/v2/get/roadCondition?format=json', parser:'ibi511cond' },
   { key:'nd', name:'North Dakota',   url:'https://www.511nd.gov/api/v2/get/roadCondition?format=json', parser:'ibi511cond' },
@@ -1189,7 +1193,7 @@ async function handleConditions(req, res) {
   const items = [];
   await Promise.allSettled(COND_FEEDS.map(async function(feed) {
     try {
-      const text = await serverFetch(feed.url, { timeout:10000 });
+      const text = await serverFetch(withFeedApiKey(feed, feed.url), { timeout:10000 });
       if (!text.trim() || text.trim()[0]==='<') return;
       const data = JSON.parse(text);
       let conds = [];

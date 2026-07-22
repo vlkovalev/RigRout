@@ -12,6 +12,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,6 +20,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.RIGROUT_TEST_PORT || 3099;
 const BASE = `http://127.0.0.1:${PORT}`;
 let serverProcess;
+
+test('all Idaho 511 resources use the server-side API key helper', () => {
+  const source = readFileSync(path.join(__dirname, '..', 'rigrout-server.js'), 'utf8');
+  const idahoResources = ['event', 'camera', 'sign', 'roadCondition'];
+  for (const resource of idahoResources) {
+    const feedPattern = new RegExp(
+      `511\\.idaho\\.gov/api/v2/get/${resource}\\?format=json[^\\n]*keyEnv:'BAN_KEY_ID'`
+    );
+    assert.match(source, feedPattern, `Idaho ${resource} feed must declare BAN_KEY_ID`);
+  }
+  assert.match(source, /serverFetch\(withFeedApiKey\(feed, feed\.url\)/,
+    'layer fetches must attach configured feed keys');
+});
 
 before(async () => {
   serverProcess = spawn(process.execPath, [path.join(__dirname, '..', 'rigrout-server.js')], {
