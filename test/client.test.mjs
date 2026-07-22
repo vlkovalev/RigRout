@@ -212,3 +212,17 @@ test('Driving Mode only lists route alerts ahead of the driver and Android Back 
   assert.equal(result.handled, true);
   assert.equal(result.driving, false);
 });
+
+test('Driving Mode keeps the Android screen awake only until driving ends', async () => {
+  await accept(page);
+  const calls = await page.evaluate(() => {
+    const values=[];
+    window.RigRoutNative={setKeepScreenOn:(on)=>values.push(on)};
+    indexActiveRoute({distance:1000,duration:60,geometry:{type:'LineString',coordinates:[[0,0],[0,.01]]},legs:[{steps:[]}]});
+    gpsWatcher=1;
+    startDrivingMode();
+    stopDrivingMode();
+    return values;
+  });
+  assert.deepEqual(calls, [true, false]);
+});
