@@ -83,6 +83,12 @@ test('rural-road abbreviations are expanded before provider search', () => {
   assert.match(source, /'County Road \$1'/);
 });
 
+test('geocode suggestions are prioritized by distance from the supplied location', () => {
+  const source = readFileSync(path.join(__dirname, '..', 'rigrout-server.js'), 'utf8');
+  assert.match(source, /item\.distanceKm = distanceKm\(lat, lon, item\.lat, item\.lon\)/);
+  assert.match(source, /items\.sort\(function\(a, b\) \{ return a\.distanceKm - b\.distanceKm; \}\)/);
+});
+
 // ── /api/layers input validation ─────────────────────────────────────────
 test('GET /api/layers rejects a malformed bbox', async () => {
   const r = await fetch(`${BASE}/api/layers?types=bans&bbox=999,999,999,999`);

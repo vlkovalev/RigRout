@@ -225,6 +225,15 @@ function geocodeLabel(result) {
   return parts.filter(Boolean).join(', ');
 }
 
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lon2 - lon1) * toRad;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1*toRad) * Math.cos(lat2*toRad) * Math.sin(dLon/2) * Math.sin(dLon/2);
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 async function handleGeocode(req, res, query) {
   const rawQuery = String(query.q || '').trim().slice(0, 160);
   if (rawQuery.length < 3) return respond(res, 400, { error:'Search query must be at least 3 characters' });
@@ -238,7 +247,7 @@ async function handleGeocode(req, res, query) {
   const expandedQuery = expandRuralRoadQuery(rawQuery);
   const variants = expandedQuery.toLowerCase() === rawQuery.toLowerCase() ? [rawQuery] : [rawQuery, expandedQuery];
   const cacheKey = 'geocode_' + variants.join('|').toLowerCase() + '_' +
-    (lat === null ? '' : lat.toFixed(1)) + '_' + (lon === null ? '' : lon.toFixed(1));
+    (lat === null ? '' : lat.toFixed(3)) + '_' + (lon === null ? '' : lon.toFixed(3));
   const cached = cacheGet(cacheKey);
   if (cached) return respond(res, 200, cached);
 
@@ -287,7 +296,15 @@ async function handleGeocode(req, res, query) {
     const key = item.lat.toFixed(5) + ',' + item.lon.toFixed(5);
     if (seen.has(key)) return false;
     seen.add(key); return true;
-  }).slice(0, 8);
+  });
+  // Providers apply their own relevance ranking, but route planning needs the
+  // closest matching road/place first. GPS or map-center coordinates supplied
+  // by the client therefore become the final, deterministic priority order.
+  if (lat !== null && lon !== null) {
+    items.forEach(function(item) { item.distanceKm = distanceKm(lat, lon, item.lat, item.lon); });
+    items.sort(function(a, b) { return a.distanceKm - b.distanceKm; });
+  }
+  items = items.slice(0, 8);
   const payload = { items:items, query:rawQuery, expandedQuery:expandedQuery, provider:provider };
   cacheSet(cacheKey, payload, 30*60*1000);
   respond(res, 200, payload);

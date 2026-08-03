@@ -1311,9 +1311,12 @@ async function searchPlaces(q, requestKey) {
   if (gcControllers[requestKey]) gcControllers[requestKey].abort();
   const controller = new AbortController();
   gcControllers[requestKey] = controller;
-  const center = map && map.getCenter ? map.getCenter() : null;
+  const center = autoMapCoords || (map && map.getCenter ? map.getCenter() : null);
   const params = new URLSearchParams({ q:q });
-  if (center) { params.set('lat', center.lat.toFixed(5)); params.set('lon', center.lng.toFixed(5)); }
+  if (center) {
+    params.set('lat', Number(center.lat).toFixed(5));
+    params.set('lon', Number(center.lon != null ? center.lon : center.lng).toFixed(5));
+  }
   const r = await fetch(API_BASE + '/api/geocode?' + params.toString(), {
     signal:AbortSignal.any ? AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]) : controller.signal
   });
