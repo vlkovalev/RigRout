@@ -64,7 +64,7 @@ A minimal `Dockerfile` is included for hosts that deploy from a container image 
 
 | Feature | Status |
 |---|---|
-| Address/POI search, multi-stop planning, save/share routes | Implemented |
+| Address/POI/local-road search, multi-stop planning, save/share routes | Implemented server-side through TomTom when configured, with a Nominatim fallback. Rural abbreviations such as `RR`, `RGE RD`, `TWP RD`, and `CR` are expanded automatically, and results are biased toward the visible map without excluding remote destinations. |
 | Truck stop / rest area / cardlock / weigh station / EV / border POI layers | Implemented (via OpenStreetMap/Overpass) |
 | Live road ban / DMS sign / road condition feeds (24 regions) | Implemented, **requires local server running** |
 | Route calculation with truck constraints | Implemented through the server-side TomTom Routing API when `TOMTOM_API_KEY` is configured. Height, width, length, weight, axle count, commercial status, toll preference, and US HazMat class are passed to truck mode. Without a key, the server returns an explicitly labeled OSRM car-route preview. |

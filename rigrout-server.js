@@ -13,6 +13,7 @@
  *   GET  /api/layers?types=stops,rest,bans,cameras,restrict&bbox=s,w,n,e
  *   POST /api/route-audit  body:{bbox,profile:{heightFt,widthFt,weightLbs,axles,hazmat,trailer}}
  *   POST /api/route        body:{waypoints:[[lat,lon]],profile:{...},avoidTolls}
+ *   GET  /api/geocode?q=...&lat=...&lon=...  address, POI, and rural-road search
  *   GET  /api/signs        DMS/message signs
  *   GET  /api/conditions   road conditions (colored segments)
  *   GET  /api/status
@@ -201,6 +202,95 @@ function withFeedApiKey(feed, urlStr) {
   const keyedUrl = new URL(urlStr);
   keyedUrl.searchParams.set(feed.keyParam || 'key', process.env[feed.keyEnv]);
   return keyedUrl.toString();
+}
+
+function expandRuralRoadQuery(query) {
+  return String(query || '')
+    .replace(/\b(?:rr|rge\s*rd|range\s*rd)\.?\s*(\d+[a-z]?)\b/gi, 'Range Road $1')
+    .replace(/\b(?:twp\s*rd|twp|township\s*rd)\.?\s*(\d+[a-z]?)\b/gi, 'Township Road $1')
+    .replace(/\b(?:cr|co\s*rd|county\s*rd)\.?\s*(\d+[a-z]?)\b/gi, 'County Road $1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function geocodeLabel(result) {
+  const address = result.address || {};
+  const parts = [];
+  if (result.poi && result.poi.name) parts.push(result.poi.name);
+  const street = address.freeformAddress || address.streetName || '';
+  if (street && parts.indexOf(street) === -1) parts.push(street);
+  const area = address.municipalitySubdivision || address.municipality || address.countrySecondarySubdivision || '';
+  if (area && !parts.some(function(part) { return part.indexOf(area) !== -1; })) parts.push(area);
+  if (address.countrySubdivisionCode || address.countrySubdivision) parts.push(address.countrySubdivisionCode || address.countrySubdivision);
+  return parts.filter(Boolean).join(', ');
+}
+
+async function handleGeocode(req, res, query) {
+  const rawQuery = String(query.q || '').trim().slice(0, 160);
+  if (rawQuery.length < 3) return respond(res, 400, { error:'Search query must be at least 3 characters' });
+  const lat = query.lat === undefined ? null : Number(query.lat);
+  const lon = query.lon === undefined ? null : Number(query.lon);
+  if ((lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) ||
+      (lon !== null && (!Number.isFinite(lon) || lon < -180 || lon > 180))) {
+    return respond(res, 400, { error:'Invalid search location' });
+  }
+
+  const expandedQuery = expandRuralRoadQuery(rawQuery);
+  const variants = expandedQuery.toLowerCase() === rawQuery.toLowerCase() ? [rawQuery] : [rawQuery, expandedQuery];
+  const cacheKey = 'geocode_' + variants.join('|').toLowerCase() + '_' +
+    (lat === null ? '' : lat.toFixed(1)) + '_' + (lon === null ? '' : lon.toFixed(1));
+  const cached = cacheGet(cacheKey);
+  if (cached) return respond(res, 200, cached);
+
+  let items = [];
+  let provider = 'nominatim';
+  if (process.env.TOMTOM_API_KEY) {
+    provider = 'tomtom';
+    const responses = await Promise.allSettled(variants.map(async function(searchQuery) {
+      const params = new URLSearchParams({
+        key:process.env.TOMTOM_API_KEY, typeahead:'true', limit:'10',
+        countrySet:'CA,US', language:'en-US', maxFuzzyLevel:'4'
+      });
+      // Coordinates without a radius bias results instead of excluding remote matches.
+      if (lat !== null && lon !== null) { params.set('lat', String(lat)); params.set('lon', String(lon)); }
+      const endpoint = 'https://api.tomtom.com/search/2/search/' + encodeURIComponent(searchQuery) + '.json?' + params.toString();
+      return JSON.parse(await serverFetch(endpoint, { timeout:10000 }));
+    }));
+    responses.forEach(function(response) {
+      if (response.status !== 'fulfilled') return;
+      (response.value.results || []).forEach(function(result) {
+        if (!result.position || !Number.isFinite(Number(result.position.lat)) || !Number.isFinite(Number(result.position.lon))) return;
+        items.push({ lat:Number(result.position.lat), lon:Number(result.position.lon),
+          label:geocodeLabel(result) || rawQuery, type:result.type || 'place', source:'TomTom' });
+      });
+    });
+  }
+
+  // Keep a server-side fallback for deployments without TomTom and for rare
+  // queries where TomTom returns no candidates. It sends an identifying UA.
+  if (!items.length) {
+    provider = process.env.TOMTOM_API_KEY ? 'nominatim-fallback' : 'nominatim';
+    const params = new URLSearchParams({ q:expandedQuery, format:'jsonv2', limit:'8',
+      countrycodes:'ca,us', addressdetails:'1', namedetails:'1' });
+    const data = JSON.parse(await serverFetch('https://nominatim.openstreetmap.org/search?' + params.toString(), {
+      timeout:10000, headers:{ 'User-Agent':'RigRout/2.0 (https://rigrout.com)', 'Accept-Language':'en' }
+    }));
+    items = (data || []).map(function(result) {
+      return { lat:Number(result.lat), lon:Number(result.lon), label:result.display_name || rawQuery,
+        type:result.type || result.category || 'place', source:'OpenStreetMap' };
+    });
+  }
+
+  const seen = new Set();
+  items = items.filter(function(item) {
+    if (!Number.isFinite(item.lat) || !Number.isFinite(item.lon)) return false;
+    const key = item.lat.toFixed(5) + ',' + item.lon.toFixed(5);
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  }).slice(0, 8);
+  const payload = { items:items, query:rawQuery, expandedQuery:expandedQuery, provider:provider };
+  cacheSet(cacheKey, payload, 30*60*1000);
+  respond(res, 200, payload);
 }
 
 // Overpass with 3-endpoint fallback
@@ -1581,6 +1671,14 @@ const server = http.createServer(function(req, res) {
       routingMode:process.env.TOMTOM_API_KEY?'truck':'preview',cacheEntries:_cache.size,uptime:process.uptime()|0});
   }
 
+  if (pathname==='/api/geocode') {
+    if (req.method!=='GET') return respond(res,405,{error:'GET required'});
+    if (!rateLimit(req,res,'geocode',90,60*1000)) return;
+    return handleGeocode(req,res,parsed.query).catch(function(e){
+      respond(res,502,{error:'Location search failed'}); console.warn('Geocode:', e.message);
+    });
+  }
+
   if (pathname==='/api/route') {
     if (req.method!=='POST') return respond(res,405,{error:'POST required'});
     if (!rateLimit(req,res,'route',30,60*1000)) return;
@@ -1650,6 +1748,7 @@ server.listen(PORT, HOST, function() {
   console.log('   GET  /api/signs        DMS message signs');
   console.log('   GET  /api/conditions   road condition segments');
   console.log('   GET  /api/status');
+  console.log('   GET  /api/geocode?q=... address, POI, and rural-road search');
   console.log('   GET  /api/cache/clear');
   console.log('');
   console.log('   Ban feeds: '+BAN_FEEDS.length+' regions loaded');

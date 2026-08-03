@@ -693,7 +693,7 @@ body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving
       <div class="route-wrap" style="position:relative;display:flex;gap:4px;align-items:center">
         <div style="position:relative;flex:1">
           <div class="rdot origin-dot"></div>
-          <input type="text" id="inp-origin" placeholder="City, address, or zip" autocomplete="off">
+          <input type="text" id="inp-origin" placeholder="Address, place, Range Rd, or local road" autocomplete="off">
           <div class="sugg" id="sugg-origin"></div>
         </div>
         <button onclick="useMyLocation()" title="Use my current GPS location" style="background:var(--blue);border:none;color:#fff;border-radius:5px;padding:5px 7px;cursor:pointer;font-size:13px;flex-shrink:0;height:30px;line-height:1">📍</button>
@@ -703,7 +703,7 @@ body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving
       <label>Destination</label>
       <div class="route-wrap" style="position:relative">
         <div class="rdot dest-dot"></div>
-        <input type="text" id="inp-dest" placeholder="City, address, or zip" autocomplete="off">
+        <input type="text" id="inp-dest" placeholder="Address, place, Range Rd, or local road" autocomplete="off">
         <div class="sugg" id="sugg-dest"></div>
       </div>
     </div>
@@ -1304,13 +1304,53 @@ function setUnits(u) {
   document.getElementById('lbl-weight').textContent = u==='metric' ? 'GVW (kg)'   : 'GVW (lbs)';
 }
 
-// ── Geocoding (Nominatim) ─────────────────────────────────────────────────────
+// ── Geocoding (server-side TomTom, with rural-road expansion) ─────────────────
+const gcControllers = {};
+
+async function searchPlaces(q, requestKey) {
+  if (gcControllers[requestKey]) gcControllers[requestKey].abort();
+  const controller = new AbortController();
+  gcControllers[requestKey] = controller;
+  const center = map && map.getCenter ? map.getCenter() : null;
+  const params = new URLSearchParams({ q:q });
+  if (center) { params.set('lat', center.lat.toFixed(5)); params.set('lon', center.lng.toFixed(5)); }
+  const r = await fetch(API_BASE + '/api/geocode?' + params.toString(), {
+    signal:AbortSignal.any ? AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]) : controller.signal
+  });
+  if (!r.ok) throw new Error('Search unavailable (' + r.status + ')');
+  return (await r.json()).items || [];
+}
+
+function renderPlaceSuggestions(data, sugg, inp, onSelect) {
+  sugg.innerHTML = '';
+  if (!data.length) {
+    sugg.innerHTML = '<div class="sugg-item" style="cursor:default;color:var(--dim)">No matching road or place. Add town/county or province/state.</div>';
+    sugg.style.display = 'block';
+    return;
+  }
+  data.forEach(function(item) {
+    const d = document.createElement('div');
+    d.className = 'sugg-item';
+    d.textContent = item.label;
+    d.title = item.label;
+    d.addEventListener('mousedown', function() {
+      inp.value = item.label;
+      sugg.style.display = 'none';
+      onSelect([Number(item.lat), Number(item.lon)], item.label);
+    });
+    sugg.appendChild(d);
+  });
+  sugg.style.display = 'block';
+}
+
 function setupGeo(inpId, suggId, isOrigin) {
   const inp  = document.getElementById(inpId);
   const sugg = document.getElementById(suggId);
 
   inp.addEventListener('input', () => {
     const q = inp.value.trim();
+    if (isOrigin) originCoord = null; else destCoord = null;
+    checkReady();
     clearTimeout(gcTimers[inpId]);
     if (q.length < 3) { sugg.style.display = 'none'; return; }
     gcTimers[inpId] = setTimeout(() => doGeo(q, sugg, inp, isOrigin), 450);
@@ -1320,26 +1360,19 @@ function setupGeo(inpId, suggId, isOrigin) {
 
 async function doGeo(q, sugg, inp, isOrigin) {
   try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=us,ca`, { headers: {'Accept-Language':'en'} });
-    const data = await r.json();
-    sugg.innerHTML = '';
-    if (!data.length) { sugg.style.display = 'none'; return; }
-    data.forEach(item => {
-      const d = document.createElement('div');
-      d.className = 'sugg-item';
-      d.textContent = item.display_name.split(',').slice(0,3).join(', ');
-      d.addEventListener('mousedown', () => {
-        inp.value = d.textContent;
-        sugg.style.display = 'none';
-        const coord = [+item.lat, +item.lon];
+    const data = await searchPlaces(q, inp.id);
+    renderPlaceSuggestions(data, sugg, inp, function(coord) {
         if (isOrigin) { originCoord = coord; placePin(coord, 'origin'); }
         else          { destCoord   = coord; placePin(coord, 'dest');   }
         checkReady();
-      });
-      sugg.appendChild(d);
     });
-    sugg.style.display = 'block';
-  } catch(e) { console.warn('Geocode:', e); }
+  } catch(e) {
+    if (e.name !== 'AbortError') {
+      console.warn('Geocode:', e);
+      sugg.innerHTML = '<div class="sugg-item" style="cursor:default;color:var(--danger)">Search is temporarily unavailable. Check your connection.</div>';
+      sugg.style.display = 'block';
+    }
+  }
 }
 
 function placePin(coord, type) {
@@ -1376,7 +1409,7 @@ function renderViaStops() {
     return '<div class="via-stop-row" id="via-row-' + s.id + '">' +
       '<div style="position:relative;flex:1">' +
         '<div style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:9px;height:9px;background:var(--blue);border-radius:50%"></div>' +
-        '<input type="text" id="via-inp-' + s.id + '" placeholder="Stop ' + (idx+1) + ': city, address, or zip" autocomplete="off" style="padding-left:28px">' +
+        '<input type="text" id="via-inp-' + s.id + '" placeholder="Stop ' + (idx+1) + ': address, Range Rd, or local road" autocomplete="off" style="padding-left:28px">' +
         '<div class="sugg" id="via-sugg-' + s.id + '"></div>' +
       '</div>' +
       '<button class="via-remove-btn" onclick="removeViaStop(' + s.id + ')" title="Remove stop" aria-label="Remove this stop">✕</button>' +
@@ -1397,7 +1430,7 @@ function setupViaGeo(id) {
   inp.addEventListener('input', function() {
     var q = inp.value.trim();
     var s = viaStops.find(function(x) { return x.id === id; });
-    if (s) { s.text = q; if (!q) { s.coord = null; updateViaPins(); } }
+    if (s) { s.text = q; s.coord = null; updateViaPins(); }
     clearTimeout(_viaGcTimers[id]);
     if (q.length < 3) { sugg.style.display = 'none'; return; }
     _viaGcTimers[id] = setTimeout(function() { doViaGeo(id, q, sugg, inp); }, 450);
@@ -1407,26 +1440,19 @@ function setupViaGeo(id) {
 
 async function doViaGeo(id, q, sugg, inp) {
   try {
-    var r = await fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(q) +
-      '&format=json&limit=5&countrycodes=us,ca', { headers: { 'Accept-Language': 'en' } });
-    var data = await r.json();
-    sugg.innerHTML = '';
-    if (!data.length) { sugg.style.display = 'none'; return; }
-    data.forEach(function(item) {
-      var d = document.createElement('div');
-      d.className = 'sugg-item';
-      d.textContent = item.display_name.split(',').slice(0, 3).join(', ');
-      d.addEventListener('mousedown', function() {
-        inp.value = d.textContent;
-        sugg.style.display = 'none';
+    var data = await searchPlaces(q, inp.id);
+    renderPlaceSuggestions(data, sugg, inp, function(coord, label) {
         var s = viaStops.find(function(x) { return x.id === id; });
-        if (s) { s.coord = [+item.lat, +item.lon]; s.text = d.textContent; }
+        if (s) { s.coord = coord; s.text = label; }
         updateViaPins();
-      });
-      sugg.appendChild(d);
     });
-    sugg.style.display = 'block';
-  } catch(e) { console.warn('Via geocode:', e); }
+  } catch(e) {
+    if (e.name !== 'AbortError') {
+      console.warn('Via geocode:', e);
+      sugg.innerHTML = '<div class="sugg-item" style="cursor:default;color:var(--danger)">Search is temporarily unavailable. Check your connection.</div>';
+      sugg.style.display = 'block';
+    }
+  }
 }
 
 function updateViaPins() {

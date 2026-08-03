@@ -69,6 +69,20 @@ test('GET /api/status reports healthy with feeds loaded', async () => {
   assert.ok(body.feeds > 0, 'expected at least one ban feed configured');
 });
 
+test('GET /api/geocode validates rural-road search input', async () => {
+  const short = await fetch(`${BASE}/api/geocode?q=RR`);
+  assert.equal(short.status, 400);
+  const badBias = await fetch(`${BASE}/api/geocode?q=Range%20Road%20254&lat=999&lon=-113`);
+  assert.equal(badBias.status, 400);
+});
+
+test('rural-road abbreviations are expanded before provider search', () => {
+  const source = readFileSync(path.join(__dirname, '..', 'rigrout-server.js'), 'utf8');
+  assert.match(source, /'Range Road \$1'/);
+  assert.match(source, /'Township Road \$1'/);
+  assert.match(source, /'County Road \$1'/);
+});
+
 // ── /api/layers input validation ─────────────────────────────────────────
 test('GET /api/layers rejects a malformed bbox', async () => {
   const r = await fetch(`${BASE}/api/layers?types=bans&bbox=999,999,999,999`);
