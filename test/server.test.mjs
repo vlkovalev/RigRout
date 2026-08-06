@@ -96,6 +96,13 @@ test('Alberta legal-land search uses authoritative ATS polygons and validates ra
   assert.match(source, /Government of Alberta ATS V4\.1/);
 });
 
+test('rest layer merges both official Alberta 511 turnout inventories', () => {
+  const source = readFileSync(path.join(__dirname, '..', 'rigrout-server.js'), 'utf8');
+  assert.match(source, /api\/v2\/get\/restareaturnout\?format=json/);
+  assert.match(source, /api\/v2\/get\/reststopsandturnouts\?format=json/);
+  assert.match(source, /mergeNearbyRestAreas\(official, pts, 0\.06\)/);
+});
+
 test('GET /api/geocode rejects an invalid Alberta legal-land description', async () => {
   const r = await fetch(`${BASE}/api/geocode?q=LSD%2017-22-38-25-W4`);
   assert.equal(r.status, 400);

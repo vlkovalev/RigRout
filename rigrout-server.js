@@ -468,6 +468,89 @@ function normalizePOI(el, type) {
   };
 }
 
+const ALBERTA_REST_FEEDS = [
+  'https://511.alberta.ca/api/v2/get/restareaturnout?format=json',
+  'https://511.alberta.ca/api/v2/get/reststopsandturnouts?format=json'
+];
+
+function inBounds(item, bounds) {
+  return !bounds || (item.lat >= bounds.s && item.lat <= bounds.n && item.lon >= bounds.w && item.lon <= bounds.e);
+}
+
+function normalizeAlbertaRestArea(item, inventory) {
+  const lat = Number(item.Latitude);
+  const lon = Number(item.Longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const amenities = ['Official Alberta 511'];
+  let kind, highway, detail;
+  if (inventory === 'traveler') {
+    kind = String(item.Type || '').toLowerCase() === 'turnout' ? 'Highway Turnout' : 'Rest Area';
+    highway = item.Highway || '';
+    detail = item.Location || '';
+    if (item.Washroom) amenities.push('Washrooms');
+    if (item.BrakeCheck) amenities.push('Brake check');
+    if (item.Chain) amenities.push('Chain area');
+    if (item.ScenicViewpoint) amenities.push('Scenic viewpoint');
+    if (item.PointOfInterest) amenities.push('Point of interest');
+  } else {
+    kind = String(item.AppurtenanceType || 'Highway Pullout').replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+    highway = item.Roadway || '';
+    detail = '';
+    if (item.SurfaceType) amenities.push(String(item.SurfaceType).toLowerCase().replace(/^./, function(c){ return c.toUpperCase(); }));
+    if (item.SurfaceArea) amenities.push('Area '+item.SurfaceArea+' m²');
+    if (item.StatusType && !/^in service$/i.test(item.StatusType)) amenities.push('⚠ '+item.StatusType);
+  }
+  return {
+    id:'ab511_rest_'+inventory+'_'+item.Id, type:'rest', lat:lat, lon:lon,
+    title:kind+(highway ? ' — '+highway : ''), icon:'rest', color:POI_META.rest.color,
+    source:'Alberta 511', updatedAt:new Date().toISOString(),
+    props:{ amenities:amenities.concat(detail ? [detail] : []).join(' · '), opening_hours:'' }
+  };
+}
+
+function mergeNearbyRestAreas(primary, additional, thresholdKm) {
+  const merged = primary.slice();
+  additional.forEach(function(item) {
+    const existing = merged.find(function(candidate) {
+      return distanceKm(item.lat, item.lon, candidate.lat, candidate.lon) <= thresholdKm;
+    });
+    if (!existing) { merged.push(item); return; }
+    const a = String(existing.props && existing.props.amenities || '').split(' · ').filter(Boolean);
+    const b = String(item.props && item.props.amenities || '').split(' · ').filter(Boolean);
+    existing.props.amenities = Array.from(new Set(a.concat(b))).join(' · ');
+    if (/^Alberta 511/.test(item.source)) {
+      const existingWasOfficial = /^Alberta 511/.test(existing.source);
+      existing.source = item.source;
+      if (!existingWasOfficial) existing.title = item.title;
+    }
+  });
+  return merged;
+}
+
+async function fetchAlbertaRestAreas(bounds) {
+  // Avoid downloading the province-wide inventory for maps that do not touch Alberta.
+  if (bounds && (bounds.n < 49 || bounds.s > 60 || bounds.e < -120 || bounds.w > -110)) return [];
+  const cacheKey = 'alberta_rest_official';
+  let all = cacheGet(cacheKey);
+  if (!all) {
+    const responses = await Promise.allSettled(ALBERTA_REST_FEEDS.map(function(endpoint) {
+      return serverFetch(endpoint, { timeout:12000 }).then(JSON.parse);
+    }));
+    const traveler = responses[0].status === 'fulfilled' ? responses[0].value : [];
+    const commercial = responses[1].status === 'fulfilled' ? responses[1].value : [];
+    const travelerItems = (traveler || []).map(function(item){ return normalizeAlbertaRestArea(item, 'traveler'); }).filter(Boolean);
+    const commercialItems = (commercial || []).map(function(item){ return normalizeAlbertaRestArea(item, 'commercial'); }).filter(Boolean);
+    // The two official inventories overlap in places but expose different
+    // facility fields; combine cross-inventory points within 60 m and retain
+    // all attributes. Primary-inventory points (including opposite sides of a
+    // divided highway) are never collapsed into each other.
+    all = mergeNearbyRestAreas(travelerItems, commercialItems, 0.06);
+    if (all.length) cacheSet(cacheKey, all, 30*60*1000);
+    console.log('  OK Alberta 511 official rest areas/turnouts: ' + all.length);
+  }
+  return all.filter(function(item){ return inBounds(item, bounds); });
+}
+
 // Road Bans — confirmed-working or corrected URLs (audited May 2026)
 // ✓ = confirmed working  ✗ = removed (bad domain/blocked)  ~ = URL corrected
 // A number of these feeds sit on the "511/IBI Group" white-label platform and
@@ -1313,7 +1396,12 @@ async function handleLayers(req, res, query) {
     const bbox = bounds.s+','+bounds.w+','+bounds.n+','+bounds.e;
     const q = '[out:json][timeout:25];'+OVERPASS_QUERIES[type].replace(/BBOX/g,bbox)+'out center;';
     const data = await overpassFetch(q);
-    const pts = (data.elements||[]).map(function(el){ return normalizePOI(el,type); }).filter(Boolean);
+    let pts = (data.elements||[]).map(function(el){ return normalizePOI(el,type); }).filter(Boolean);
+    if (type === 'rest') {
+      const official = await fetchAlbertaRestAreas(bounds);
+      // Prefer official Alberta records and suppress nearby OSM duplicates.
+      pts = mergeNearbyRestAreas(official, pts, 0.06);
+    }
     console.log('  OK ' + type + ': ' + pts.length + ' points');
     // Same reasoning as the restrict cache above — don't let a transient
     // Overpass outage's empty result masquerade as "no stops/rest areas
