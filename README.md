@@ -64,7 +64,7 @@ A minimal `Dockerfile` is included for hosts that deploy from a container image 
 
 | Feature | Status |
 |---|---|
-| Address/POI/local-road search, multi-stop planning, save/share routes | Implemented server-side through TomTom when configured, with a Nominatim fallback. Rural abbreviations such as `RR`, `RGE RD`, `TWP RD`, and `CR` are expanded automatically, and results are biased toward the visible map without excluding remote destinations. |
+| Address/POI/local-road/legal-land search, multi-stop planning, save/share routes | Implemented server-side through TomTom when configured, with a Nominatim fallback. Rural abbreviations such as `RR`, `RGE RD`, `TWP RD`, and `CR` are expanded automatically. Alberta legal land descriptions such as `LSD 4-22-38-25-W4`, `NE-22-38-25-W4`, and section-only `22-38-25-W4` resolve through the Government of Alberta ATS V4.1 polygon service to the parcel centre. Results are biased toward GPS/map position and ordered nearest-first. |
 | Truck stop / rest area / cardlock / weigh station / EV / border POI layers | Implemented (via OpenStreetMap/Overpass) |
 | Live road ban / DMS sign / road condition feeds (24 regions) | Implemented, **requires local server running** |
 | Route calculation with truck constraints | Implemented through the server-side TomTom Routing API when `TOMTOM_API_KEY` is configured. Height, width, length, weight, axle count, commercial status, toll preference, and US HazMat class are passed to truck mode. Without a key, the server returns an explicitly labeled OSRM car-route preview. |

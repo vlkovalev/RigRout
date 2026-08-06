@@ -234,6 +234,83 @@ function distanceKm(lat1, lon1, lat2, lon2) {
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
+function parseAlbertaLegalLand(query) {
+  let text = String(query || '').toUpperCase().trim()
+    .replace(/\bLEGAL\s+LAND\b/g, '')
+    .replace(/\bLSD\b/g, '')
+    .replace(/\bMER(?:IDIAN)?\b/g, 'W')
+    .replace(/\bWEST\s+OF\s+(?:THE\s+)?/g, 'W')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim()
+    .replace(/W([456])M\b/g, 'W$1')
+    .replace(/(\d)(W[456])\b/g, '$1 $2');
+  if (!/\bW\s*[456]\b/.test(text)) return null;
+
+  const tokens = text.replace(/\bW\s+([456])\b/g, 'W$1').split(/\s+/);
+  const meridianToken = tokens[tokens.length - 1] || '';
+  const meridianMatch = meridianToken.match(/^W([456])$/);
+  if (!meridianMatch) return { error:'Use a legal-land format such as LSD 4-22-38-25-W4 or NE-22-38-25-W4' };
+  const meridian = Number(meridianMatch[1]);
+  const values = tokens.slice(0, -1);
+  let subdivision = null;
+  let section, township, range;
+  if (values.length === 4 && (/^(?:NE|NW|SE|SW)$/.test(values[0]) || /^\d{1,2}$/.test(values[0]))) {
+    subdivision = values[0];
+    section = Number(values[1]); township = Number(values[2]); range = Number(values[3]);
+  } else if (values.length === 3) {
+    section = Number(values[0]); township = Number(values[1]); range = Number(values[2]);
+  } else {
+    return { error:'Use a legal-land format such as LSD 4-22-38-25-W4 or NE-22-38-25-W4' };
+  }
+  const lsd = subdivision && /^\d+$/.test(subdivision) ? Number(subdivision) : null;
+  const quarter = subdivision && /^[NSEW]{2}$/.test(subdivision) ? subdivision : null;
+  if (!Number.isInteger(section) || section < 1 || section > 36 ||
+      !Number.isInteger(township) || township < 1 || township > 126 ||
+      !Number.isInteger(range) || range < 1 || range > 30 ||
+      (lsd !== null && (lsd < 1 || lsd > 16))) {
+    return { error:'Legal land values are out of range (LSD 1–16, section 1–36, township 1–126, range 1–30, W4–W6)' };
+  }
+  return { meridian:meridian, range:range, township:township, section:section, lsd:lsd, quarter:quarter };
+}
+
+async function lookupAlbertaLegalLand(legal) {
+  const where = ['M='+legal.meridian, 'RGE='+legal.range, 'TWP='+legal.township, 'SEC='+legal.section];
+  if (legal.lsd !== null) where.push('LS='+legal.lsd);
+  if (legal.quarter) where.push("QS='"+legal.quarter+"'");
+  const params = new URLSearchParams({
+    where:where.join(' AND '), outFields:'M,RGE,TWP,SEC,LS,QS,RA,DESCRIPTOR',
+    returnGeometry:'true', outSR:'4326', geometryPrecision:'7', f:'json'
+  });
+  const endpoint = 'https://geospatial.alberta.ca/titan/rest/services/base/alberta_township_system/MapServer/20/query?' + params.toString();
+  const data = JSON.parse(await serverFetch(endpoint, { timeout:12000 }));
+  const features = (data.features || []).filter(function(feature) {
+    return !String(feature.attributes && feature.attributes.RA || '').trim();
+  });
+  const points = [];
+  features.forEach(function(feature) {
+    (feature.geometry && feature.geometry.rings || []).forEach(function(ring) {
+      ring.forEach(function(point) {
+        if (Array.isArray(point) && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1]))) {
+          points.push([Number(point[0]), Number(point[1])]);
+        }
+      });
+    });
+  });
+  if (!points.length) return null;
+  const west = Math.min.apply(null, points.map(function(point){ return point[0]; }));
+  const east = Math.max.apply(null, points.map(function(point){ return point[0]; }));
+  const south = Math.min.apply(null, points.map(function(point){ return point[1]; }));
+  const north = Math.max.apply(null, points.map(function(point){ return point[1]; }));
+  const prefix = legal.lsd !== null ? 'LSD '+legal.lsd : (legal.quarter || 'Section');
+  const code = prefix+'-'+legal.section+'-'+legal.township+'-'+legal.range+'-W'+legal.meridian;
+  return {
+    lat:(south+north)/2, lon:(west+east)/2,
+    label:'Legal land: '+code+' (parcel centre)', type:'legalLand',
+    source:'Government of Alberta ATS V4.1',
+    note:'Parcel centre only—verify the correct access road and site entrance.'
+  };
+}
+
 async function handleGeocode(req, res, query) {
   const rawQuery = String(query.q || '').trim().slice(0, 160);
   if (rawQuery.length < 3) return respond(res, 400, { error:'Search query must be at least 3 characters' });
@@ -242,6 +319,19 @@ async function handleGeocode(req, res, query) {
   if ((lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) ||
       (lon !== null && (!Number.isFinite(lon) || lon < -180 || lon > 180))) {
     return respond(res, 400, { error:'Invalid search location' });
+  }
+
+  const legal = parseAlbertaLegalLand(rawQuery);
+  if (legal && legal.error) return respond(res, 400, { error:legal.error });
+  if (legal) {
+    const legalCacheKey = 'legal_' + [legal.lsd || legal.quarter || '', legal.section, legal.township, legal.range, legal.meridian].join('_');
+    const legalCached = cacheGet(legalCacheKey);
+    if (legalCached) return respond(res, 200, legalCached);
+    const legalItem = await lookupAlbertaLegalLand(legal);
+    const legalPayload = { items:legalItem ? [legalItem] : [], query:rawQuery,
+      provider:'Government of Alberta ATS V4.1', legalLand:true };
+    cacheSet(legalCacheKey, legalPayload, 24*60*60*1000);
+    return respond(res, 200, legalPayload);
   }
 
   const expandedQuery = expandRuralRoadQuery(rawQuery);

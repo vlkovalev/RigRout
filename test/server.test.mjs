@@ -89,6 +89,20 @@ test('geocode suggestions are prioritized by distance from the supplied location
   assert.match(source, /items\.sort\(function\(a, b\) \{ return a\.distanceKm - b\.distanceKm; \}\)/);
 });
 
+test('Alberta legal-land search uses authoritative ATS polygons and validates ranges', () => {
+  const source = readFileSync(path.join(__dirname, '..', 'rigrout-server.js'), 'utf8');
+  assert.match(source, /function parseAlbertaLegalLand\(/);
+  assert.match(source, /alberta_township_system\/MapServer\/20\/query/);
+  assert.match(source, /Government of Alberta ATS V4\.1/);
+});
+
+test('GET /api/geocode rejects an invalid Alberta legal-land description', async () => {
+  const r = await fetch(`${BASE}/api/geocode?q=LSD%2017-22-38-25-W4`);
+  assert.equal(r.status, 400);
+  const body = await r.json();
+  assert.match(body.error, /LSD 1/);
+});
+
 // ── /api/layers input validation ─────────────────────────────────────────
 test('GET /api/layers rejects a malformed bbox', async () => {
   const r = await fetch(`${BASE}/api/layers?types=bans&bbox=999,999,999,999`);

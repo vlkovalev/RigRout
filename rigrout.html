@@ -693,7 +693,7 @@ body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving
       <div class="route-wrap" style="position:relative;display:flex;gap:4px;align-items:center">
         <div style="position:relative;flex:1">
           <div class="rdot origin-dot"></div>
-          <input type="text" id="inp-origin" placeholder="Address, place, Range Rd, or local road" autocomplete="off">
+          <input type="text" id="inp-origin" placeholder="Address, Range Rd, or legal land" autocomplete="off">
           <div class="sugg" id="sugg-origin"></div>
         </div>
         <button onclick="useMyLocation()" title="Use my current GPS location" style="background:var(--blue);border:none;color:#fff;border-radius:5px;padding:5px 7px;cursor:pointer;font-size:13px;flex-shrink:0;height:30px;line-height:1">📍</button>
@@ -703,7 +703,7 @@ body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving
       <label>Destination</label>
       <div class="route-wrap" style="position:relative">
         <div class="rdot dest-dot"></div>
-        <input type="text" id="inp-dest" placeholder="Address, place, Range Rd, or local road" autocomplete="off">
+        <input type="text" id="inp-dest" placeholder="Address, Range Rd, or legal land" autocomplete="off">
         <div class="sugg" id="sugg-dest"></div>
       </div>
     </div>
@@ -1320,22 +1320,39 @@ async function searchPlaces(q, requestKey) {
   const r = await fetch(API_BASE + '/api/geocode?' + params.toString(), {
     signal:AbortSignal.any ? AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]) : controller.signal
   });
-  if (!r.ok) throw new Error('Search unavailable (' + r.status + ')');
-  return (await r.json()).items || [];
+  const payload = await r.json().catch(function(){ return {}; });
+  if (!r.ok) throw new Error(payload.error || 'Search unavailable (' + r.status + ')');
+  return payload.items || [];
+}
+
+function renderSearchMessage(sugg, message, danger) {
+  sugg.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'sugg-item';
+  row.style.cursor = 'default';
+  row.style.color = danger ? 'var(--danger)' : 'var(--dim)';
+  row.textContent = message;
+  sugg.appendChild(row);
+  sugg.style.display = 'block';
 }
 
 function renderPlaceSuggestions(data, sugg, inp, onSelect) {
   sugg.innerHTML = '';
   if (!data.length) {
-    sugg.innerHTML = '<div class="sugg-item" style="cursor:default;color:var(--dim)">No matching road or place. Add town/county or province/state.</div>';
-    sugg.style.display = 'block';
+    renderSearchMessage(sugg, 'No match. Add a town/county, or use LSD 4-22-38-25-W4.', false);
     return;
   }
   data.forEach(function(item) {
     const d = document.createElement('div');
     d.className = 'sugg-item';
     d.textContent = item.label;
-    d.title = item.label;
+    d.title = item.note ? item.label + ' — ' + item.note : item.label;
+    if (item.note) {
+      const note = document.createElement('span');
+      note.style.cssText = 'display:block;font-size:9px;color:var(--dim);margin-top:2px';
+      note.textContent = item.note;
+      d.appendChild(note);
+    }
     d.addEventListener('mousedown', function() {
       inp.value = item.label;
       sugg.style.display = 'none';
@@ -1372,8 +1389,7 @@ async function doGeo(q, sugg, inp, isOrigin) {
   } catch(e) {
     if (e.name !== 'AbortError') {
       console.warn('Geocode:', e);
-      sugg.innerHTML = '<div class="sugg-item" style="cursor:default;color:var(--danger)">Search is temporarily unavailable. Check your connection.</div>';
-      sugg.style.display = 'block';
+      renderSearchMessage(sugg, e.message || 'Search is temporarily unavailable. Check your connection.', true);
     }
   }
 }
@@ -1412,7 +1428,7 @@ function renderViaStops() {
     return '<div class="via-stop-row" id="via-row-' + s.id + '">' +
       '<div style="position:relative;flex:1">' +
         '<div style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:9px;height:9px;background:var(--blue);border-radius:50%"></div>' +
-        '<input type="text" id="via-inp-' + s.id + '" placeholder="Stop ' + (idx+1) + ': address, Range Rd, or local road" autocomplete="off" style="padding-left:28px">' +
+        '<input type="text" id="via-inp-' + s.id + '" placeholder="Stop ' + (idx+1) + ': address, Range Rd, or legal land" autocomplete="off" style="padding-left:28px">' +
         '<div class="sugg" id="via-sugg-' + s.id + '"></div>' +
       '</div>' +
       '<button class="via-remove-btn" onclick="removeViaStop(' + s.id + ')" title="Remove stop" aria-label="Remove this stop">✕</button>' +
@@ -1452,8 +1468,7 @@ async function doViaGeo(id, q, sugg, inp) {
   } catch(e) {
     if (e.name !== 'AbortError') {
       console.warn('Via geocode:', e);
-      sugg.innerHTML = '<div class="sugg-item" style="cursor:default;color:var(--danger)">Search is temporarily unavailable. Check your connection.</div>';
-      sugg.style.display = 'block';
+      renderSearchMessage(sugg, e.message || 'Search is temporarily unavailable. Check your connection.', true);
     }
   }
 }
