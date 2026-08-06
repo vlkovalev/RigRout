@@ -473,6 +473,9 @@ const ALBERTA_REST_FEEDS = [
   'https://511.alberta.ca/api/v2/get/reststopsandturnouts?format=json'
 ];
 
+const ONTARIO_REST_FEED = 'https://511on.ca/api/v2/get/allrestareas?format=json';
+const NEW_YORK_REST_FEED = 'https://data.ny.gov/resource/qebf-4fd8.json?$limit=1000';
+
 function inBounds(item, bounds) {
   return !bounds || (item.lat >= bounds.s && item.lat <= bounds.n && item.lon >= bounds.w && item.lon <= bounds.e);
 }
@@ -508,6 +511,56 @@ function normalizeAlbertaRestArea(item, inventory) {
   };
 }
 
+function normalizeOntarioRestArea(item) {
+  const lat = Number(item.Latitude);
+  const lon = Number(item.Longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  // Inspection stations belong on the weigh/inspection layer, not among
+  // places where a driver may safely plan a rest stop.
+  if (/inspection/i.test(String(item.Type || ''))) return null;
+  const amenities = ['Official Ontario 511'];
+  if (/^y(es)?$/i.test(String(item.TruckParking || ''))) amenities.push('Truck parking');
+  else amenities.push('No designated truck parking');
+  if (/^y(es)?$/i.test(String(item.Lavatory || ''))) amenities.push('Washrooms');
+  if (/^y(es)?$/i.test(String(item.Accessible || ''))) amenities.push('Accessible');
+  if (/^y(es)?$/i.test(String(item.Fuel || ''))) amenities.push('Fuel');
+  if (item.FoodServices && !/not available|^no$/i.test(String(item.FoodServices))) amenities.push(String(item.FoodServices));
+  if (item.Status && !/^open$/i.test(String(item.Status))) amenities.push('\u26a0 ' + item.Status);
+  if (item.Location) amenities.push(String(item.Location));
+  if (item.Comments) amenities.push(String(item.Comments));
+  const road = [item.Roadway, item.Direction].filter(Boolean).join(' ');
+  const stableId = [item.Name, item.Roadway, item.Direction, lat, lon].filter(Boolean).join('_').replace(/\W+/g, '_');
+  return {
+    id:'on511_rest_'+stableId, type:'rest', lat:lat, lon:lon,
+    title:String(item.Name || item.Type || 'Rest Area')+(road ? ' \u2014 '+road : ''),
+    icon:'rest', color:POI_META.rest.color, source:'Ontario 511', updatedAt:new Date().toISOString(),
+    props:{ amenities:amenities.join(' \u00b7 '), opening_hours:String(item.Open || '') }
+  };
+}
+
+function normalizeNewYorkRestArea(item) {
+  const lat = Number(item.latitude);
+  const lon = Number(item.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const amenities = ['Official NYSDOT'];
+  if (item.status && !/^open$/i.test(String(item.status))) amenities.push('\u26a0 ' + item.status);
+  const truckSpaces = Number(item.truck_spaces);
+  if (Number.isFinite(truckSpaces) && truckSpaces >= 0) amenities.push(truckSpaces+' truck spaces');
+  if (/^y(es)?$/i.test(String(item.vending_machine || ''))) amenities.push('Vending');
+  if (/^y(es)?$/i.test(String(item.picnictable || ''))) amenities.push('Picnic tables');
+  if (/^y(es)?$/i.test(String(item.visitor_info || ''))) amenities.push('Visitor information');
+  if (item.county) amenities.push(item.county+' County');
+  if (item.description) amenities.push(String(item.description));
+  const road = [item.route, item.travel_direction].filter(Boolean).join(' ');
+  const stableId = [item.name, item.route, item.travel_direction, lat, lon].filter(Boolean).join('_').replace(/\W+/g, '_');
+  return {
+    id:'nysdot_rest_'+stableId, type:'rest', lat:lat, lon:lon,
+    title:String(item.name || 'Rest Area')+(road ? ' \u2014 '+road : ''),
+    icon:'rest', color:POI_META.rest.color, source:'NYSDOT Open Data', updatedAt:new Date().toISOString(),
+    props:{ amenities:amenities.join(' \u00b7 '), opening_hours:'' }
+  };
+}
+
 function mergeNearbyRestAreas(primary, additional, thresholdKm) {
   const merged = primary.slice();
   additional.forEach(function(item) {
@@ -518,8 +571,8 @@ function mergeNearbyRestAreas(primary, additional, thresholdKm) {
     const a = String(existing.props && existing.props.amenities || '').split(' · ').filter(Boolean);
     const b = String(item.props && item.props.amenities || '').split(' · ').filter(Boolean);
     existing.props.amenities = Array.from(new Set(a.concat(b))).join(' · ');
-    if (/^Alberta 511/.test(item.source)) {
-      const existingWasOfficial = /^Alberta 511/.test(existing.source);
+    if (item.source && item.source !== 'OpenStreetMap') {
+      const existingWasOfficial = existing.source && existing.source !== 'OpenStreetMap';
       existing.source = item.source;
       if (!existingWasOfficial) existing.title = item.title;
     }
@@ -547,6 +600,31 @@ async function fetchAlbertaRestAreas(bounds) {
     all = mergeNearbyRestAreas(travelerItems, commercialItems, 0.06);
     if (all.length) cacheSet(cacheKey, all, 30*60*1000);
     console.log('  OK Alberta 511 official rest areas/turnouts: ' + all.length);
+  }
+  return all.filter(function(item){ return inBounds(item, bounds); });
+}
+
+async function fetchOfficialRestAreas(bounds) {
+  const tasks = [fetchAlbertaRestAreas(bounds)];
+  if (!bounds || !(bounds.n < 41.5 || bounds.s > 57 || bounds.e < -95.2 || bounds.w > -74)) {
+    tasks.push(fetchCachedOfficialInventory('ontario_rest_official', ONTARIO_REST_FEED, normalizeOntarioRestArea, bounds, 60*60*1000));
+  }
+  if (!bounds || !(bounds.n < 40.4 || bounds.s > 45.1 || bounds.e < -79.8 || bounds.w > -71.8)) {
+    tasks.push(fetchCachedOfficialInventory('new_york_rest_official', NEW_YORK_REST_FEED, normalizeNewYorkRestArea, bounds, 6*60*60*1000));
+  }
+  const results = await Promise.allSettled(tasks);
+  return results.reduce(function(all, result) {
+    return result.status === 'fulfilled' ? all.concat(result.value) : all;
+  }, []);
+}
+
+async function fetchCachedOfficialInventory(cacheKey, endpoint, normalizer, bounds, ttl) {
+  let all = cacheGet(cacheKey);
+  if (!all) {
+    const data = JSON.parse(await serverFetch(endpoint, { timeout:12000 }));
+    all = (Array.isArray(data) ? data : []).map(normalizer).filter(Boolean);
+    if (all.length) cacheSet(cacheKey, all, ttl);
+    console.log('  OK ' + cacheKey + ': ' + all.length);
   }
   return all.filter(function(item){ return inBounds(item, bounds); });
 }
@@ -1398,8 +1476,8 @@ async function handleLayers(req, res, query) {
     const data = await overpassFetch(q);
     let pts = (data.elements||[]).map(function(el){ return normalizePOI(el,type); }).filter(Boolean);
     if (type === 'rest') {
-      const official = await fetchAlbertaRestAreas(bounds);
-      // Prefer official Alberta records and suppress nearby OSM duplicates.
+      const official = await fetchOfficialRestAreas(bounds);
+      // Prefer verified government records and suppress nearby OSM duplicates.
       pts = mergeNearbyRestAreas(official, pts, 0.06);
     }
     console.log('  OK ' + type + ': ' + pts.length + ' points');
