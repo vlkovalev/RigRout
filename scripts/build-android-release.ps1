@@ -5,6 +5,8 @@ $keyStore = Join-Path $HOME 'rigrout-upload.jks'
 $javaHome = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot'
 $androidHome = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
 $bundle = Join-Path $root 'android\app\build\outputs\bundle\release\app-release.aab'
+$androidRoot = Join-Path $root 'android'
+$appBuild = Join-Path $androidRoot 'app\build'
 
 if (-not (Test-Path -LiteralPath $keyStore)) {
     throw "Upload key not found: $keyStore"
@@ -27,8 +29,31 @@ try {
         & npm.cmd run mobile:sync
         if ($LASTEXITCODE -ne 0) { throw 'Capacitor sync failed.' }
 
-        Push-Location (Join-Path $root 'android')
+        Push-Location $androidRoot
         try {
+            # Gradle/Windows can retain handles in incremental ART-profile and
+            # package directories after an earlier build. Stop every daemon and
+            # clear only this app's generated build tree before producing a
+            # release. This also prevents an old signed AAB from being mistaken
+            # for the new version when compilation fails.
+            & .\gradlew.bat --stop | Out-Host
+            if (Test-Path -LiteralPath $appBuild) {
+                $expectedParent = [IO.Path]::GetFullPath((Join-Path $androidRoot 'app'))
+                $resolvedBuild = [IO.Path]::GetFullPath($appBuild)
+                if (-not $resolvedBuild.StartsWith($expectedParent + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+                    throw "Refusing to clear unexpected build path: $resolvedBuild"
+                }
+                $removed = $false
+                for ($attempt = 1; $attempt -le 3 -and -not $removed; $attempt++) {
+                    try {
+                        Remove-Item -LiteralPath $resolvedBuild -Recurse -Force
+                        $removed = $true
+                    } catch {
+                        if ($attempt -eq 3) { throw }
+                        Start-Sleep -Seconds 2
+                    }
+                }
+            }
             & .\gradlew.bat bundleRelease --no-daemon --max-workers=1
             if ($LASTEXITCODE -ne 0) { throw 'Android release build failed.' }
         } finally {
