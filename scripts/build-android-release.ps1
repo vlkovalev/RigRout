@@ -1,3 +1,5 @@
+param([switch]$InstallConnected)
+
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -5,6 +7,7 @@ $keyStore = Join-Path $HOME 'rigrout-upload.jks'
 $javaHome = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot'
 $androidHome = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
 $bundle = Join-Path $root 'android\app\build\outputs\bundle\release\app-release.aab'
+$apk = Join-Path $root 'android\app\build\outputs\apk\release\app-release.apk'
 $androidRoot = Join-Path $root 'android'
 $appBuild = Join-Path $androidRoot 'app\build'
 $capacitorBuild = Join-Path $root 'node_modules\@capacitor\android\capacitor\build'
@@ -64,7 +67,8 @@ try {
             for ($buildAttempt = 1; $buildAttempt -le 2; $buildAttempt++) {
                 & .\gradlew.bat --stop | Out-Host
                 Clear-AndroidGeneratedBuilds
-                & .\gradlew.bat bundleRelease --no-daemon --max-workers=1
+                $gradleTask = if ($InstallConnected) { 'assembleRelease' } else { 'bundleRelease' }
+                & .\gradlew.bat $gradleTask --no-daemon --max-workers=1
                 if ($LASTEXITCODE -eq 0) { break }
                 if ($buildAttempt -eq 2) { throw 'Android release build failed after a clean retry.' }
                 Write-Warning 'Android build hit a transient file lock; cleaning generated files and retrying once.'
@@ -76,13 +80,27 @@ try {
         Pop-Location
     }
 
+    $artifact = if ($InstallConnected) { $apk } else { $bundle }
+    if (-not (Test-Path -LiteralPath $artifact)) { throw "Expected Android artifact was not created: $artifact" }
     $jarsigner = Join-Path $javaHome 'bin\jarsigner.exe'
-    & $jarsigner -verify $bundle
-    if ($LASTEXITCODE -ne 0) { throw 'Bundle signature verification failed.' }
+    & $jarsigner -verify $artifact
+    if ($LASTEXITCODE -ne 0) { throw 'Android artifact signature verification failed.' }
 
     Write-Host ''
     Write-Host 'SIGNED AND VERIFIED:' -ForegroundColor Green
-    Write-Host $bundle
+    Write-Host $artifact
+
+    if ($InstallConnected) {
+        $adb = Join-Path $androidHome 'platform-tools\adb.exe'
+        $devices = @(& $adb devices | Select-Object -Skip 1 | Where-Object { $_ -match "\sdevice$" })
+        if ($devices.Count -ne 1) { throw "Connect exactly one authorized Android device; found $($devices.Count)." }
+        & $adb install -r $apk
+        if ($LASTEXITCODE -ne 0) { throw 'Android phone update failed; the existing app was left installed.' }
+        $installed = (& $adb shell dumpsys package com.rigrout.app | Select-String 'versionCode=|versionName=' | ForEach-Object { $_.Line.Trim() }) -join '; '
+        Write-Host ''
+        Write-Host 'PHONE UPDATED:' -ForegroundColor Green
+        Write-Host $installed
+    }
 } finally {
     if ($passwordPtr -ne [IntPtr]::Zero) {
         [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPtr)
