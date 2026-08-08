@@ -7,6 +7,32 @@ $androidHome = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
 $bundle = Join-Path $root 'android\app\build\outputs\bundle\release\app-release.aab'
 $androidRoot = Join-Path $root 'android'
 $appBuild = Join-Path $androidRoot 'app\build'
+$capacitorBuild = Join-Path $root 'node_modules\@capacitor\android\capacitor\build'
+$cordovaBuild = Join-Path $androidRoot 'capacitor-cordova-android-plugins\build'
+
+function Remove-VerifiedGeneratedDirectory([string]$Target, [string]$ExpectedParent) {
+    if (-not (Test-Path -LiteralPath $Target)) { return }
+    $resolvedTarget = [IO.Path]::GetFullPath($Target)
+    $resolvedParent = [IO.Path]::GetFullPath($ExpectedParent)
+    if (-not $resolvedTarget.StartsWith($resolvedParent + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clear unexpected build path: $resolvedTarget"
+    }
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $resolvedTarget -Recurse -Force
+            return
+        } catch {
+            if ($attempt -eq 4) { throw }
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
+function Clear-AndroidGeneratedBuilds {
+    Remove-VerifiedGeneratedDirectory $appBuild (Join-Path $androidRoot 'app')
+    Remove-VerifiedGeneratedDirectory $capacitorBuild (Join-Path $root 'node_modules\@capacitor\android\capacitor')
+    Remove-VerifiedGeneratedDirectory $cordovaBuild (Join-Path $androidRoot 'capacitor-cordova-android-plugins')
+}
 
 if (-not (Test-Path -LiteralPath $keyStore)) {
     throw "Upload key not found: $keyStore"
@@ -31,31 +57,18 @@ try {
 
         Push-Location $androidRoot
         try {
-            # Gradle/Windows can retain handles in incremental ART-profile and
-            # package directories after an earlier build. Stop every daemon and
-            # clear only this app's generated build tree before producing a
-            # release. This also prevents an old signed AAB from being mistaken
-            # for the new version when compilation fails.
-            & .\gradlew.bat --stop | Out-Host
-            if (Test-Path -LiteralPath $appBuild) {
-                $expectedParent = [IO.Path]::GetFullPath((Join-Path $androidRoot 'app'))
-                $resolvedBuild = [IO.Path]::GetFullPath($appBuild)
-                if (-not $resolvedBuild.StartsWith($expectedParent + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-                    throw "Refusing to clear unexpected build path: $resolvedBuild"
-                }
-                $removed = $false
-                for ($attempt = 1; $attempt -le 3 -and -not $removed; $attempt++) {
-                    try {
-                        Remove-Item -LiteralPath $resolvedBuild -Recurse -Force
-                        $removed = $true
-                    } catch {
-                        if ($attempt -eq 3) { throw }
-                        Start-Sleep -Seconds 2
-                    }
-                }
+            # Windows can retain handles in the app, Capacitor library, or
+            # generated Cordova module. Clean all three verified build trees;
+            # if the first build still encounters a transient lock, repeat the
+            # cleanup and build once automatically.
+            for ($buildAttempt = 1; $buildAttempt -le 2; $buildAttempt++) {
+                & .\gradlew.bat --stop | Out-Host
+                Clear-AndroidGeneratedBuilds
+                & .\gradlew.bat bundleRelease --no-daemon --max-workers=1
+                if ($LASTEXITCODE -eq 0) { break }
+                if ($buildAttempt -eq 2) { throw 'Android release build failed after a clean retry.' }
+                Write-Warning 'Android build hit a transient file lock; cleaning generated files and retrying once.'
             }
-            & .\gradlew.bat bundleRelease --no-daemon --max-workers=1
-            if ($LASTEXITCODE -ne 0) { throw 'Android release build failed.' }
         } finally {
             Pop-Location
         }
