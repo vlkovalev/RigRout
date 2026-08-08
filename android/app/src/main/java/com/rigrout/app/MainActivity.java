@@ -1,11 +1,15 @@
 package com.rigrout.app;
 
 import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
 import android.webkit.JavascriptInterface;
 import android.view.WindowManager;
+import java.util.Locale;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private TextToSpeech textToSpeech;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -13,6 +17,9 @@ public class MainActivity extends BridgeActivity {
         // app shell. Driving Mode uses it to prevent the screen from locking;
         // the flag is removed immediately when Driving Mode ends.
         getBridge().getWebView().addJavascriptInterface(new ScreenControl(), "RigRoutNative");
+        textToSpeech = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) textToSpeech.setLanguage(Locale.getDefault());
+        });
     }
 
     private class ScreenControl {
@@ -26,6 +33,30 @@ public class MainActivity extends BridgeActivity {
                 }
             });
         }
+
+        @JavascriptInterface
+        public void speak(String message) {
+            if (message == null || message.trim().isEmpty()) return;
+            runOnUiThread(() -> {
+                if (textToSpeech != null) {
+                    textToSpeech.speak(message, TextToSpeech.QUEUE_FLUSH, null, "rigrout-guidance");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void stopSpeaking() {
+            runOnUiThread(() -> { if (textToSpeech != null) textToSpeech.stop(); });
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        if (textToSpeech != null) {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+        }
+        super.onDestroy();
     }
 
     // Default Capacitor back-button behavior is: go back in WebView history if

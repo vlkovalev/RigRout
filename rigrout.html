@@ -321,6 +321,7 @@ select option{background:var(--bg);color:var(--text);padding:8px}
 .drive-hud{position:absolute;z-index:825;top:14px;left:50%;transform:translateX(-50%);width:min(620px,calc(100% - 24px));background:rgba(15,20,24,.94);border:1px solid rgba(255,255,255,.18);border-radius:12px;color:#fff;box-shadow:0 5px 20px rgba(0,0,0,.5);padding:12px 14px;display:none}
 .drive-hud.on{display:block}.drive-hud-top{display:flex;align-items:center;gap:12px}.drive-next{font-size:18px;font-weight:800;line-height:1.25;flex:1}.drive-distance{font-size:25px;font-weight:800;color:#7dd3fc;white-space:nowrap}.drive-meta{display:flex;gap:14px;color:#cbd5e1;font-size:12px;margin-top:7px}.drive-alerts{margin-top:9px;display:flex;flex-direction:column;gap:5px}.drive-alert{padding:7px 9px;border-radius:6px;background:rgba(245,166,35,.16);border-left:3px solid #f5a623;font-size:12px}.drive-exit{border:1px solid rgba(255,255,255,.3);background:transparent;color:#fff;border-radius:6px;padding:7px 9px;cursor:pointer}.offroute-card{display:none;margin-top:9px;padding:9px;background:rgba(224,82,82,.2);border:1px solid #e05252;border-radius:7px;font-size:13px}.offroute-card.on{display:flex;align-items:center;justify-content:space-between;gap:10px}.offroute-card button{background:#e05252;border:0;color:#fff;border-radius:5px;padding:7px 10px;font-weight:700}
 .drive-stop{display:none;margin-top:9px;padding:8px 10px;border-radius:7px;background:rgba(61,184,122,.13);border-left:3px solid #3DB87A;font-size:12px}.drive-stop.on{display:block}.drive-stop-title{font-weight:800;color:#d1fae5}.drive-stop-detail{margin-top:2px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drive-voice{border:1px solid rgba(255,255,255,.3);background:transparent;color:#fff;border-radius:6px;padding:7px 9px;cursor:pointer;font-size:16px}.drive-voice.off{color:#94a3b8;text-decoration:line-through}
 body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving #layers-panel,body.driving #mobile-toggle,body.driving #panel{display:none!important}body.driving #map-wrap{height:100vh!important}body.driving #map-bottom-bar{display:none}body.driving #gps-btn{display:none}
 .bbar-btn{height:44px;padding:0 20px;font-size:14px;font-weight:600;background:transparent;color:var(--dim);border:none;cursor:pointer;transition:all .15s;white-space:nowrap;display:flex;align-items:center;justify-content:center}
 .bbar-btn:hover{background:var(--surf2);color:var(--text)}
@@ -903,6 +904,7 @@ body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving
         <div style="font-size:10px;color:#94a3b8;text-transform:uppercase">to next instruction</div>
       </div>
       <div id="drive-next" class="drive-next">Follow the highlighted route</div>
+      <button id="drive-voice" class="drive-voice" onclick="toggleVoiceGuidance()" aria-label="Mute spoken guidance" aria-pressed="true" title="Spoken guidance">🔊</button>
       <button class="drive-exit" onclick="stopDrivingMode()" aria-label="Exit Driving Mode">✕</button>
     </div>
     <div class="drive-meta">
@@ -1254,6 +1256,11 @@ let activeRouteSteps = [];       // flattened maneuver list
 let drivingModeOn = false;
 let lastDriverPosition = null;
 let offRouteSamples = 0;
+let voiceGuidanceOn = true;
+try { voiceGuidanceOn = localStorage.getItem('rigrout_voice_guidance') !== 'off'; } catch(e) {}
+let spokenManeuverKeys = new Set();
+let spokenAlertKeys = new Set();
+let offRouteSpoken = false;
 let routeRestrictionItems = [];
 let routeBanItems = [];
 
@@ -1976,18 +1983,44 @@ function renderNextRouteFacility(progress){
   var detail=[facility.type,facility.amen,facility.opening].filter(Boolean).join(' · ');
   document.getElementById('drive-stop-detail').textContent=detail||'Facility details unavailable — verify signs on approach';
 }
+function speakGuidance(message){
+  if(!voiceGuidanceOn||!message)return;
+  try {
+    if(window.RigRoutNative&&typeof window.RigRoutNative.speak==='function'){window.RigRoutNative.speak(String(message));return;}
+    if('speechSynthesis' in window){window.speechSynthesis.cancel();var utterance=new SpeechSynthesisUtterance(String(message));utterance.rate=.95;window.speechSynthesis.speak(utterance);}
+  } catch(e){console.warn('Spoken guidance unavailable:',e.message);}
+}
+function stopGuidanceSpeech(){
+  try{if(window.RigRoutNative&&typeof window.RigRoutNative.stopSpeaking==='function')window.RigRoutNative.stopSpeaking();else if('speechSynthesis' in window)window.speechSynthesis.cancel();}catch(e){}
+}
+function syncVoiceGuidanceButton(){
+  var button=document.getElementById('drive-voice');if(!button)return;
+  button.textContent=voiceGuidanceOn?'🔊':'🔇';button.classList.toggle('off',!voiceGuidanceOn);button.setAttribute('aria-pressed',String(voiceGuidanceOn));button.setAttribute('aria-label',voiceGuidanceOn?'Mute spoken guidance':'Enable spoken guidance');
+}
+function toggleVoiceGuidance(){
+  voiceGuidanceOn=!voiceGuidanceOn;try{localStorage.setItem('rigrout_voice_guidance',voiceGuidanceOn?'on':'off');}catch(e){}
+  if(!voiceGuidanceOn)stopGuidanceSpeech();syncVoiceGuidanceButton();setStatus(voiceGuidanceOn?'Spoken guidance on':'Spoken guidance muted');
+}
+function announceDrivingGuidance(next,nextIndex,before,alerts){
+  if(!voiceGuidanceOn)return;
+  var urgent=(alerts||[]).find(function(alert){return alert.aheadM>=0&&alert.aheadM<=5000;});
+  if(urgent){var alertKey=[urgent.label,Math.round(urgent.lat*1000),Math.round(urgent.lon*1000)].join('_');if(!spokenAlertKeys.has(alertKey)){spokenAlertKeys.add(alertKey);speakGuidance('Warning. '+urgent.label+' in '+formatDriveDistance(urgent.aheadM)+'.');return;}}
+  var instruction=next&&next.maneuver&&next.maneuver.instruction||next&&next.name||'';
+  var band=before<=300?'near':before<=1200?'approach':'';
+  if(instruction&&band){var maneuverKey=nextIndex+'_'+band;if(!spokenManeuverKeys.has(maneuverKey)){spokenManeuverKeys.add(maneuverKey);speakGuidance((band==='near'?'In '+formatDriveDistance(before)+', ':'Ahead, ')+instruction);return;}}
+}
 function updateDrivingMode(lat,lon,accuracy){
   if(!drivingModeOn||!activeRoute)return;var n=nearestRoutePosition(lat,lon);if(!n)return;lastDriverPosition={lat:lat,lon:lon,accuracy:accuracy||0};
   var total=activeRoutePoints[activeRoutePoints.length-1].cumulativeM||activeRoute.distance,remaining=Math.max(0,total-n.progressM),speed=activeRoute.duration>0?activeRoute.distance/activeRoute.duration:20,eta=new Date(Date.now()+remaining/speed*1000),sum=0,next=null,before=0;
-  for(var i=0;i<activeRouteSteps.length;i++){sum+=+(activeRouteSteps[i].distance||0);if(sum>=n.progressM){next=activeRouteSteps[i];before=sum-n.progressM;break;}}
+  var nextIndex=-1;for(var i=0;i<activeRouteSteps.length;i++){sum+=+(activeRouteSteps[i].distance||0);if(sum>=n.progressM){next=activeRouteSteps[i];nextIndex=i;before=sum-n.progressM;break;}}
   document.getElementById('drive-next').textContent=next&&next.maneuver&&next.maneuver.instruction||next&&next.name||'Continue on the highlighted route';document.getElementById('drive-distance').textContent=formatDriveDistance(before);document.getElementById('drive-remaining').textContent=formatDriveDistance(remaining)+' remaining';document.getElementById('drive-eta').textContent='ETA '+eta.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});document.getElementById('drive-gps').textContent='GPS ±'+Math.round(accuracy||0)+' m';
-  renderNextRouteFacility(n.progressM);var box=document.getElementById('drive-alerts');box.innerHTML='';collectAheadAlerts(n.progressM).forEach(function(a){var row=document.createElement('div');row.className='drive-alert';row.textContent=a.icon+' '+formatDriveDistance(a.aheadM)+' ahead · '+a.label;box.appendChild(row);});
-  var allowed=Math.max(250,(accuracy||0)*2);offRouteSamples=n.distanceM>allowed?offRouteSamples+1:0;var off=document.getElementById('offroute-card');off.classList.toggle('on',offRouteSamples>=3);if(offRouteSamples>=3)document.getElementById('offroute-message').textContent='You are '+formatDriveDistance(n.distanceM)+' off route.';map.setView([lat,lon],Math.max(map.getZoom(),14),{animate:true});
+  renderNextRouteFacility(n.progressM);var alerts=collectAheadAlerts(n.progressM),box=document.getElementById('drive-alerts');box.innerHTML='';alerts.forEach(function(a){var row=document.createElement('div');row.className='drive-alert';row.textContent=a.icon+' '+formatDriveDistance(a.aheadM)+' ahead · '+a.label;box.appendChild(row);});announceDrivingGuidance(next,nextIndex,before,alerts);
+  var allowed=Math.max(250,(accuracy||0)*2);offRouteSamples=n.distanceM>allowed?offRouteSamples+1:0;if(!offRouteSamples)offRouteSpoken=false;var off=document.getElementById('offroute-card');off.classList.toggle('on',offRouteSamples>=3);if(offRouteSamples>=3){document.getElementById('offroute-message').textContent='You are '+formatDriveDistance(n.distanceM)+' off route.';if(!offRouteSpoken){offRouteSpoken=true;speakGuidance('Warning. You appear to be off route.');}}map.setView([lat,lon],Math.max(map.getZoom(),14),{animate:true});
 }
 function setNativeKeepScreenOn(on){try{if(window.RigRoutNative&&typeof window.RigRoutNative.setKeepScreenOn==='function')window.RigRoutNative.setKeepScreenOn(!!on);}catch(e){console.warn('Screen-awake control unavailable:',e.message);}}
-function startDrivingMode(){if(!activeRoutePoints.length){setStatus('Plan a route before starting Driving Mode');return;}drivingModeOn=true;offRouteSamples=0;setNativeKeepScreenOn(true);document.body.classList.add('driving');document.getElementById('drive-hud').classList.add('on');setTimeout(function(){map.invalidateSize();},50);if(!gpsWatcher)toggleGPS();setStatus('Driving Mode started');}
-function stopDrivingMode(){drivingModeOn=false;offRouteSamples=0;setNativeKeepScreenOn(false);document.body.classList.remove('driving');document.getElementById('drive-hud').classList.remove('on');var o=document.getElementById('offroute-card');if(o)o.classList.remove('on');var s=document.getElementById('drive-stop');if(s)s.classList.remove('on');setTimeout(function(){map.invalidateSize();},50);}
-window.addEventListener('pagehide',function(){setNativeKeepScreenOn(false);});
+function startDrivingMode(){if(!activeRoutePoints.length){setStatus('Plan a route before starting Driving Mode');return;}drivingModeOn=true;offRouteSamples=0;offRouteSpoken=false;spokenManeuverKeys.clear();spokenAlertKeys.clear();syncVoiceGuidanceButton();setNativeKeepScreenOn(true);document.body.classList.add('driving');document.getElementById('drive-hud').classList.add('on');setTimeout(function(){map.invalidateSize();},50);if(!gpsWatcher)toggleGPS();setStatus('Driving Mode started');}
+function stopDrivingMode(){drivingModeOn=false;offRouteSamples=0;stopGuidanceSpeech();setNativeKeepScreenOn(false);document.body.classList.remove('driving');document.getElementById('drive-hud').classList.remove('on');var o=document.getElementById('offroute-card');if(o)o.classList.remove('on');var s=document.getElementById('drive-stop');if(s)s.classList.remove('on');setTimeout(function(){map.invalidateSize();},50);}
+window.addEventListener('pagehide',function(){setNativeKeepScreenOn(false);stopGuidanceSpeech();});
 async function rerouteFromCurrentPosition(){if(!lastDriverPosition){setStatus('Waiting for a current GPS position');return;}originCoord=[lastDriverPosition.lat,lastDriverPosition.lon];var i=document.getElementById('inp-origin');if(i)i.value='Current location';offRouteSamples=0;document.getElementById('offroute-card').classList.remove('on');await planRoute();if(activeRoutePoints.length)startDrivingMode();}
 
 let gpsWatcher = null;

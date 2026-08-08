@@ -228,6 +228,20 @@ test('Driving Mode shows the closest upcoming truck stop or rest area first', as
   assert.match(result.detail, /Diesel/);
 });
 
+test('spoken guidance prioritizes a nearby hazard and does not repeat it', async () => {
+  await accept(page);
+  const messages = await page.evaluate(() => {
+    const spoken=[];window.RigRoutNative={setKeepScreenOn:()=>{},speak:(message)=>spoken.push(message),stopSpeaking:()=>{}};
+    voiceGuidanceOn=true;
+    indexActiveRoute({distance:3330,duration:240,geometry:{type:'LineString',coordinates:[[0,0],[0,.01],[0,.02],[0,.03]]},legs:[{steps:[{distance:3330,maneuver:{instruction:'Continue north'}}]}]});
+    routeRestrictionItems=[{lat:.025,lon:0,title:'Low clearance ahead'}];
+    gpsWatcher=1;startDrivingMode();updateDrivingMode(.015,0,5);updateDrivingMode(.0151,0,5);
+    return spoken;
+  });
+  const hazardMessages = messages.filter((message) => /Warning.*Low clearance ahead/.test(message));
+  assert.equal(hazardMessages.length, 1);
+});
+
 test('Driving Mode keeps the Android screen awake only until driving ends', async () => {
   await accept(page);
   const calls = await page.evaluate(() => {
