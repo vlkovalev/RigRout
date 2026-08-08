@@ -213,6 +213,21 @@ test('Driving Mode only lists route alerts ahead of the driver and Android Back 
   assert.equal(result.driving, false);
 });
 
+test('Driving Mode shows the closest upcoming truck stop or rest area first', async () => {
+  await accept(page);
+  const result = await page.evaluate(() => {
+    indexActiveRoute({distance:11100,duration:600,geometry:{type:'LineString',coordinates:[[0,0],[0,.05],[0,.1]]},legs:[{steps:[]}]});
+    poiCache.rest=[{lat:.08,lon:0,name:'Far Rest Area',amen:'Washrooms'}];
+    poiCache.stops=[{lat:.03,lon:0,name:'Near Truck Stop',amen:'Diesel · Showers'}];
+    gpsWatcher=1;startDrivingMode();updateDrivingMode(.01,0,5);
+    return {visible:document.getElementById('drive-stop').classList.contains('on'),title:document.getElementById('drive-stop-title').textContent,detail:document.getElementById('drive-stop-detail').textContent};
+  });
+  assert.equal(result.visible, true);
+  assert.match(result.title, /Near Truck Stop/);
+  assert.doesNotMatch(result.title, /Far Rest Area/);
+  assert.match(result.detail, /Diesel/);
+});
+
 test('Driving Mode keeps the Android screen awake only until driving ends', async () => {
   await accept(page);
   const calls = await page.evaluate(() => {

@@ -320,6 +320,7 @@ select option{background:var(--bg);color:var(--text);padding:8px}
 #map-bottom-bar{position:absolute;bottom:0;left:50%;transform:translateX(-50%);z-index:820;display:flex;align-items:center;gap:0;background:var(--surf);border:1px solid var(--border);border-bottom:none;border-radius:10px 10px 0 0;overflow:hidden;box-shadow:0 -2px 12px rgba(0,0,0,.45)}
 .drive-hud{position:absolute;z-index:825;top:14px;left:50%;transform:translateX(-50%);width:min(620px,calc(100% - 24px));background:rgba(15,20,24,.94);border:1px solid rgba(255,255,255,.18);border-radius:12px;color:#fff;box-shadow:0 5px 20px rgba(0,0,0,.5);padding:12px 14px;display:none}
 .drive-hud.on{display:block}.drive-hud-top{display:flex;align-items:center;gap:12px}.drive-next{font-size:18px;font-weight:800;line-height:1.25;flex:1}.drive-distance{font-size:25px;font-weight:800;color:#7dd3fc;white-space:nowrap}.drive-meta{display:flex;gap:14px;color:#cbd5e1;font-size:12px;margin-top:7px}.drive-alerts{margin-top:9px;display:flex;flex-direction:column;gap:5px}.drive-alert{padding:7px 9px;border-radius:6px;background:rgba(245,166,35,.16);border-left:3px solid #f5a623;font-size:12px}.drive-exit{border:1px solid rgba(255,255,255,.3);background:transparent;color:#fff;border-radius:6px;padding:7px 9px;cursor:pointer}.offroute-card{display:none;margin-top:9px;padding:9px;background:rgba(224,82,82,.2);border:1px solid #e05252;border-radius:7px;font-size:13px}.offroute-card.on{display:flex;align-items:center;justify-content:space-between;gap:10px}.offroute-card button{background:#e05252;border:0;color:#fff;border-radius:5px;padding:7px 10px;font-weight:700}
+.drive-stop{display:none;margin-top:9px;padding:8px 10px;border-radius:7px;background:rgba(61,184,122,.13);border-left:3px solid #3DB87A;font-size:12px}.drive-stop.on{display:block}.drive-stop-title{font-weight:800;color:#d1fae5}.drive-stop-detail{margin-top:2px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving #layers-panel,body.driving #mobile-toggle,body.driving #panel{display:none!important}body.driving #map-wrap{height:100vh!important}body.driving #map-bottom-bar{display:none}body.driving #gps-btn{display:none}
 .bbar-btn{height:44px;padding:0 20px;font-size:14px;font-weight:600;background:transparent;color:var(--dim);border:none;cursor:pointer;transition:all .15s;white-space:nowrap;display:flex;align-items:center;justify-content:center}
 .bbar-btn:hover{background:var(--surf2);color:var(--text)}
@@ -908,6 +909,10 @@ body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving
       <span id="drive-remaining">— remaining</span>
       <span id="drive-eta">ETA —</span>
       <span id="drive-gps">Waiting for GPS</span>
+    </div>
+    <div id="drive-stop" class="drive-stop">
+      <div id="drive-stop-title" class="drive-stop-title"></div>
+      <div id="drive-stop-detail" class="drive-stop-detail"></div>
     </div>
     <div id="drive-alerts" class="drive-alerts"></div>
     <div id="offroute-card" class="offroute-card">
@@ -1952,17 +1957,36 @@ function collectAheadAlerts(progress){
   add(routeRestrictionItems,'Truck restriction','⛔');add(routeBanItems,'Road ban','🚫');add(incidents,'Reported hazard','⚠️');add(poiCache.weigh,'Weigh station','⚖️');add(poiCache.border,'Border crossing','🛡️');
   return c.map(function(x){var n=nearestRoutePosition(x.lat,x.lon);if(!n||n.distanceM>3000)return null;x.aheadM=n.progressM-progress;return x.aheadM>=-100&&x.aheadM<=50000?x:null;}).filter(Boolean).sort(function(a,b){return a.aheadM-b.aheadM;}).slice(0,3);
 }
+function findNextRouteFacility(progress){
+  var facilities=[];
+  [['rest','Rest area','🅿'],['stops','Truck stop','⛽']].forEach(function(group){
+    (poiCache[group[0]]||[]).forEach(function(x){
+      var lat=+x.lat,lon=+x.lon;if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+      var n=nearestRoutePosition(lat,lon);if(!n||n.distanceM>5000)return;
+      var ahead=n.progressM-progress;if(ahead<-100||ahead>160934)return;
+      facilities.push({aheadM:ahead,offRouteM:n.distanceM,icon:group[2],type:group[1],name:x.name||group[1],amen:x.amen||'',opening:x.opening||''});
+    });
+  });
+  return facilities.sort(function(a,b){return a.aheadM-b.aheadM||a.offRouteM-b.offRouteM;})[0]||null;
+}
+function renderNextRouteFacility(progress){
+  var card=document.getElementById('drive-stop'),facility=findNextRouteFacility(progress);
+  card.classList.toggle('on',!!facility);if(!facility)return;
+  document.getElementById('drive-stop-title').textContent=facility.icon+' Next stop: '+facility.name+' · '+formatDriveDistance(facility.aheadM);
+  var detail=[facility.type,facility.amen,facility.opening].filter(Boolean).join(' · ');
+  document.getElementById('drive-stop-detail').textContent=detail||'Facility details unavailable — verify signs on approach';
+}
 function updateDrivingMode(lat,lon,accuracy){
   if(!drivingModeOn||!activeRoute)return;var n=nearestRoutePosition(lat,lon);if(!n)return;lastDriverPosition={lat:lat,lon:lon,accuracy:accuracy||0};
   var total=activeRoutePoints[activeRoutePoints.length-1].cumulativeM||activeRoute.distance,remaining=Math.max(0,total-n.progressM),speed=activeRoute.duration>0?activeRoute.distance/activeRoute.duration:20,eta=new Date(Date.now()+remaining/speed*1000),sum=0,next=null,before=0;
   for(var i=0;i<activeRouteSteps.length;i++){sum+=+(activeRouteSteps[i].distance||0);if(sum>=n.progressM){next=activeRouteSteps[i];before=sum-n.progressM;break;}}
   document.getElementById('drive-next').textContent=next&&next.maneuver&&next.maneuver.instruction||next&&next.name||'Continue on the highlighted route';document.getElementById('drive-distance').textContent=formatDriveDistance(before);document.getElementById('drive-remaining').textContent=formatDriveDistance(remaining)+' remaining';document.getElementById('drive-eta').textContent='ETA '+eta.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});document.getElementById('drive-gps').textContent='GPS ±'+Math.round(accuracy||0)+' m';
-  var box=document.getElementById('drive-alerts');box.innerHTML='';collectAheadAlerts(n.progressM).forEach(function(a){var row=document.createElement('div');row.className='drive-alert';row.textContent=a.icon+' '+formatDriveDistance(a.aheadM)+' ahead · '+a.label;box.appendChild(row);});
+  renderNextRouteFacility(n.progressM);var box=document.getElementById('drive-alerts');box.innerHTML='';collectAheadAlerts(n.progressM).forEach(function(a){var row=document.createElement('div');row.className='drive-alert';row.textContent=a.icon+' '+formatDriveDistance(a.aheadM)+' ahead · '+a.label;box.appendChild(row);});
   var allowed=Math.max(250,(accuracy||0)*2);offRouteSamples=n.distanceM>allowed?offRouteSamples+1:0;var off=document.getElementById('offroute-card');off.classList.toggle('on',offRouteSamples>=3);if(offRouteSamples>=3)document.getElementById('offroute-message').textContent='You are '+formatDriveDistance(n.distanceM)+' off route.';map.setView([lat,lon],Math.max(map.getZoom(),14),{animate:true});
 }
 function setNativeKeepScreenOn(on){try{if(window.RigRoutNative&&typeof window.RigRoutNative.setKeepScreenOn==='function')window.RigRoutNative.setKeepScreenOn(!!on);}catch(e){console.warn('Screen-awake control unavailable:',e.message);}}
 function startDrivingMode(){if(!activeRoutePoints.length){setStatus('Plan a route before starting Driving Mode');return;}drivingModeOn=true;offRouteSamples=0;setNativeKeepScreenOn(true);document.body.classList.add('driving');document.getElementById('drive-hud').classList.add('on');setTimeout(function(){map.invalidateSize();},50);if(!gpsWatcher)toggleGPS();setStatus('Driving Mode started');}
-function stopDrivingMode(){drivingModeOn=false;offRouteSamples=0;setNativeKeepScreenOn(false);document.body.classList.remove('driving');document.getElementById('drive-hud').classList.remove('on');var o=document.getElementById('offroute-card');if(o)o.classList.remove('on');setTimeout(function(){map.invalidateSize();},50);}
+function stopDrivingMode(){drivingModeOn=false;offRouteSamples=0;setNativeKeepScreenOn(false);document.body.classList.remove('driving');document.getElementById('drive-hud').classList.remove('on');var o=document.getElementById('offroute-card');if(o)o.classList.remove('on');var s=document.getElementById('drive-stop');if(s)s.classList.remove('on');setTimeout(function(){map.invalidateSize();},50);}
 window.addEventListener('pagehide',function(){setNativeKeepScreenOn(false);});
 async function rerouteFromCurrentPosition(){if(!lastDriverPosition){setStatus('Waiting for a current GPS position');return;}originCoord=[lastDriverPosition.lat,lastDriverPosition.lon];var i=document.getElementById('inp-origin');if(i)i.value='Current location';offRouteSamples=0;document.getElementById('offroute-card').classList.remove('on');await planRoute();if(activeRoutePoints.length)startDrivingMode();}
 
