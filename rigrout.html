@@ -251,7 +251,7 @@ select option{background:var(--bg);color:var(--text);padding:8px}
 .hbtn-fb:hover{background:var(--pine-lt);color:var(--text)}
 
 /* ── GPS / Location ── */
-#gps-btn{position:absolute;bottom:70px;right:14px;z-index:800;width:44px;height:44px;background:var(--surf);border:1px solid var(--border);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;transition:all .15s;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+#gps-btn{position:absolute;bottom:140px;right:14px;z-index:800;width:44px;height:44px;background:var(--surf);border:1px solid var(--border);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;transition:all .15s;box-shadow:0 2px 8px rgba(0,0,0,.4)}
 #gps-btn:hover{background:var(--pine-lt)}
 #gps-btn.active{background:var(--blue);border-color:var(--blue)}
 .gps-dot-outer{width:18px;height:18px;border-radius:50%;background:rgba(44,125,160,.25);animation:gps-pulse 2s ease-out infinite;position:absolute}
@@ -695,7 +695,7 @@ body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving
       <div class="route-wrap" style="position:relative;display:flex;gap:4px;align-items:center">
         <div style="position:relative;flex:1">
           <div class="rdot origin-dot"></div>
-          <input type="text" id="inp-origin" placeholder="Address, Range Rd, or legal land" autocomplete="off">
+          <input type="text" id="inp-origin" placeholder="Address, Range Rd, business, or legal land" autocomplete="off">
           <div class="sugg" id="sugg-origin"></div>
         </div>
         <button onclick="useMyLocation()" title="Use my current GPS location" style="background:var(--blue);border:none;color:#fff;border-radius:5px;padding:5px 7px;cursor:pointer;font-size:13px;flex-shrink:0;height:30px;line-height:1">📍</button>
@@ -705,7 +705,7 @@ body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving
       <label>Destination</label>
       <div class="route-wrap" style="position:relative">
         <div class="rdot dest-dot"></div>
-        <input type="text" id="inp-dest" placeholder="Address, Range Rd, or legal land" autocomplete="off">
+        <input type="text" id="inp-dest" placeholder="Address, Range Rd, business, or legal land" autocomplete="off">
         <div class="sugg" id="sugg-dest"></div>
       </div>
     </div>
@@ -1023,7 +1023,7 @@ body.driving #header,body.driving #sidebar,body.driving #layers-btn,body.driving
 <script src="mobile-config.js"></script>
 <script>
 // ── Map init ──────────────────────────────────────────────────────────────────
-const map = L.map('map', { zoomControl: false }).setView([39.8, -98.6], 4);
+const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([39.8, -98.6], 4);
 
 // ── Tile Layers ───────────────────────────────────────────────────────────────
 const TILE_LAYERS = {
@@ -1440,7 +1440,7 @@ function renderViaStops() {
     return '<div class="via-stop-row" id="via-row-' + s.id + '">' +
       '<div style="position:relative;flex:1">' +
         '<div style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:9px;height:9px;background:var(--blue);border-radius:50%"></div>' +
-        '<input type="text" id="via-inp-' + s.id + '" placeholder="Stop ' + (idx+1) + ': address, Range Rd, or legal land" autocomplete="off" style="padding-left:28px">' +
+        '<input type="text" id="via-inp-' + s.id + '" placeholder="Stop ' + (idx+1) + ': address, Range Rd, business, or legal land" autocomplete="off" style="padding-left:28px">' +
         '<div class="sugg" id="via-sugg-' + s.id + '"></div>' +
       '</div>' +
       '<button class="via-remove-btn" onclick="removeViaStop(' + s.id + ')" title="Remove stop" aria-label="Remove this stop">✕</button>' +
@@ -2027,11 +2027,13 @@ let gpsWatcher = null;
 let gpsMarker  = null;
 function toggleGPS() {
   const btn = document.getElementById('gps-hbtn');
+  const mapBtn = document.getElementById('gps-btn');
   if (gpsWatcher) {
     navigator.geolocation.clearWatch(gpsWatcher);
     gpsWatcher = null;
     if (gpsMarker) { map.removeLayer(gpsMarker); gpsMarker = null; }
     if (btn) { btn.classList.remove('on'); btn.textContent = '📍 GPS'; }
+    if (mapBtn) mapBtn.classList.remove('active');
     setStatus('GPS tracking off');
   } else {
     if (!navigator.geolocation) { setStatus('GPS not supported'); return; }
@@ -2050,8 +2052,10 @@ function toggleGPS() {
       gpsMarker.setIcon(icon);
       updateDrivingMode(lat, lng, pos.coords.accuracy);
       if (btn) { btn.classList.add('on'); btn.textContent = '📍 Live'; }
+      if (mapBtn) mapBtn.classList.add('active');
     }, err => {
       if (btn) { btn.classList.remove('on'); btn.textContent = '📍 GPS'; }
+      if (mapBtn) mapBtn.classList.remove('active');
       var friendly = err.code === 1
         ? 'Location access is off. Enable it in your phone\'s Settings → Apps → RigRout → Permissions → Location, then try again.'
         : err.code === 2
@@ -2547,6 +2551,8 @@ function checkDisclaimer() {
   if (alreadyAccepted) {
     modal.classList.add('hidden');
     setAppInert(false);
+    // Auto-start GPS to center map on user's location
+    toggleGPS();
     return;
   }
   setAppInert(true);
@@ -2571,6 +2577,8 @@ function acceptDisclaimer() {
   const modal = document.getElementById('disclaimer-overlay');
   if (modal) modal.classList.add('hidden');
   setAppInert(false);
+  // Auto-start GPS to center map on user's location
+  toggleGPS();
   try { localStorage.setItem('rigrout_disclaimer', '1'); } catch(e) {}
 }
 
